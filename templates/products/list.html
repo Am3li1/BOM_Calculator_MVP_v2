@@ -1,0 +1,204 @@
+<!-- templates/products/list.html -->
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── Page Header ──────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Products</h5>
+        <p class="text-muted mb-0" style="font-size:0.85rem;">
+            Manage your product catalogue.
+            <strong>{{ total_count }}</strong> record{{ total_count|pluralize }} found.
+        </p>
+    </div>
+    <a href="{% url 'products:create' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> Add Product
+    </a>
+</div>
+
+<!-- ── Filters ───────────────────────────────────────────────────── -->
+<div class="content-card mb-3">
+    <div class="card-body py-3">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-12 col-md-5">
+                <label class="form-label mb-1" style="font-size:0.78rem;font-weight:600;color:#6c757d;">
+                    SEARCH
+                </label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" name="search" class="form-control"
+                           placeholder="Product name or code..."
+                           value="{{ search_query }}">
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label mb-1" style="font-size:0.78rem;font-weight:600;color:#6c757d;">
+                    STATUS
+                </label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <option value="active"   {% if status_filter == 'active'   %}selected{% endif %}>Active</option>
+                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm px-3">
+                    <i class="bi bi-funnel me-1"></i>Filter
+                </button>
+                <a href="{% url 'products:list' %}" class="btn btn-outline-secondary btn-sm px-3">
+                    <i class="bi bi-x-lg me-1"></i>Clear
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── Products Table ────────────────────────────────────────────── -->
+<div class="content-card">
+    <div class="card-body p-0">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">Product Code</th>
+                        <th>Product Name</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">BOM Items</th>
+                        <th class="text-center">Wood Parts</th>
+                        <th class="text-center pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products %}
+                    <tr>
+                        <!-- Code -->
+                        <td class="ps-4">
+                            <code style="font-size:0.82rem;background:#f0f0ff;
+                                         color:#6366f1;padding:2px 8px;border-radius:4px;">
+                                {{ product.product_code }}
+                            </code>
+                        </td>
+
+                        <!-- Name -->
+                        <td style="font-size:0.875rem;">{{ product.product_name }}</td>
+
+                        <!-- Status -->
+                        <td class="text-center">
+                            {% if product.active %}
+                                <span class="badge bg-success-subtle text-success"
+                                      style="font-size:0.7rem;">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary"
+                                      style="font-size:0.7rem;">Inactive</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- BOM Count -->
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border"
+                                  style="font-size:0.75rem;">
+                                {{ product.bom_items.count }}
+                            </span>
+                        </td>
+
+                        <!-- Wood Parts Count -->
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border"
+                                  style="font-size:0.75rem;">
+                                {{ product.wood_parts.count }}
+                            </span>
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="text-center pe-4">
+                            <div class="d-flex gap-1 justify-content-center">
+                                <a href="{% url 'products:edit' product.pk %}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   style="font-size:0.75rem;padding:3px 10px;">
+                                    <i class="bi bi-pencil me-1"></i>Edit
+                                </a>
+
+                                <!-- Delete button triggers modal -->
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        style="font-size:0.75rem;padding:3px 10px;"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deleteModal{{ product.pk }}">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Delete Confirmation Modal -->
+                    <div class="modal fade" id="deleteModal{{ product.pk }}"
+                         tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content" style="border-radius:12px;">
+                                <div class="modal-header border-0 pb-0">
+                                    <h6 class="modal-title fw-bold">Remove Product?</h6>
+                                    <button type="button" class="btn-close"
+                                            data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body" style="font-size:0.875rem;">
+                                    <p>You are about to remove:</p>
+                                    <div class="bg-light rounded p-2 mb-2">
+                                        <strong>{{ product.product_code }}</strong>
+                                        — {{ product.product_name }}
+                                    </div>
+                                    <p class="text-muted mb-0">
+                                        The product data is preserved (soft delete).
+                                        BOM and cost history will remain intact.
+                                    </p>
+                                </div>
+                                <div class="modal-footer border-0 pt-0">
+                                    <button type="button" class="btn btn-sm btn-secondary"
+                                            data-bs-dismiss="modal">Cancel</button>
+                                    <form method="POST"
+                                          action="{% url 'products:delete' product.pk %}">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="btn btn-sm btn-danger">
+                                            <i class="bi bi-trash me-1"></i>Remove
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% else %}
+        <div class="text-center py-5">
+            <i class="bi bi-box text-muted" style="font-size:3rem;opacity:0.4;"></i>
+            <h6 class="mt-3 text-muted">No products found</h6>
+            <p class="text-muted" style="font-size:0.875rem;">
+                {% if search_query or status_filter %}
+                    Try clearing your filters.
+                {% else %}
+                    Add your first product or import from Excel.
+                {% endif %}
+            </p>
+            {% if not search_query %}
+            <a href="{% url 'products:create' %}" class="btn btn-primary btn-sm me-2">
+                <i class="bi bi-plus-lg me-1"></i>Add Product
+            </a>
+            <a href="{% url 'imports:upload' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-upload me-1"></i>Import Excel
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endblock %}

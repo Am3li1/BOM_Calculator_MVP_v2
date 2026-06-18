@@ -1,0 +1,116 @@
+<!-- templates/resources/form.html -->
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- Back button -->
+<div class="mb-3">
+    <a href="{% url 'resources:list' %}" 
+       class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Resources
+    </a>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-7">
+        <div class="content-card">
+
+            <!-- Card Header -->
+            <div class="card-header">
+                <i class="bi bi-collection me-2 text-primary"></i>{{ form_title }}
+            </div>
+
+            <div class="card-body p-4">
+                <form method="POST" novalidate>
+                    {% csrf_token %}
+
+                    <!-- Resource Name -->
+                    <div class="mb-3">
+                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                            {{ form.resource_name.label }}
+                            <span class="text-danger">*</span>
+                        </label>
+                        {{ form.resource_name }}
+                        {% if form.resource_name.errors %}
+                            <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                {{ form.resource_name.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Row: Category + Unit -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-500" style="font-size:0.875rem;">
+                                {{ form.category.label }}
+                                <span class="text-danger">*</span>
+                            </label>
+                            {{ form.category }}
+                            {% if form.category.errors %}
+                                <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                    {{ form.category.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-500" style="font-size:0.875rem;">
+                                {{ form.unit.label }}
+                                <span class="text-danger">*</span>
+                            </label>
+                            {{ form.unit }}
+                            {% if form.unit.errors %}
+                                <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                    {{ form.unit.errors.0 }}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">e.g. SFT, CFT, NOS, KG, RFT, MTR</div>
+                        </div>
+                    </div>
+
+                    <!-- Rate -->
+                    <div class="mb-3">
+                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                            {{ form.rate.label }}
+                            <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">₹</span>
+                            {{ form.rate }}
+                        </div>
+                        {% if form.rate.errors %}
+                            <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                {{ form.rate.errors.0 }}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">{{ form.rate.help_text }}</div>
+                    </div>
+
+                    <!-- Active Checkbox -->
+                    <div class="mb-4">
+                        <div class="form-check">
+                            {{ form.active }}
+                            <label class="form-check-label" style="font-size:0.875rem;">
+                                {{ form.active.label }}
+                            </label>
+                        </div>
+                        <div class="form-text">{{ form.active.help_text }}</div>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>{{ submit_label }}
+                        </button>
+                        <a href="{% url 'resources:list' %}"
+                           class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

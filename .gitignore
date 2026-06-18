@@ -1,0 +1,8 @@
+# Virtual environment
+venv/
+
+# Environment variables
+.env
+
+# Qodo files
+.qodo/
