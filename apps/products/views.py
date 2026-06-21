@@ -138,3 +138,137 @@ def product_delete(request, pk):
         )
 
     return redirect('products:list')
+
+@login_required
+def clone_product(request, pk):
+    """
+    Clones an existing product including all its BOM items and Wood Parts.
+
+    GET:  Shows a confirmation form asking for the new product name.
+    POST: Performs the clone and redirects to the new product's BOM page.
+
+    The original product is never modified.
+    Each cloned BOMItem and WoodPart becomes a completely independent
+    database record — changes to the clone do not affect the original.
+    """
+    from django.db import transaction
+    from apps.bom.models import BOMItem, WoodPart
+    import re
+
+    original = get_object_or_404(Product, pk=pk, is_deleted=False)
+
+    # Pre-fill the suggested name so the user has something to edit
+    suggested_name = f'Copy of {original.product_name}'
+
+    if request.method == 'POST':
+        new_name = request.POST.get('new_product_name', '').strip()
+        new_code = request.POST.get('new_product_code', '').strip()
+
+        # Validation
+        errors = []
+        if not new_name:
+            errors.append('Product name is required.')
+        if not new_code:
+            errors.append('Product code is required.')
+        if new_code and Product.objects.filter(
+            product_code=new_code, is_deleted=False
+        ).exists():
+            errors.append(
+                f'Product code "{new_code}" already exists. '
+                f'Please choose a different code.'
+            )
+
+        if errors:
+            for error in errors:
+                messages.error(request, error)
+            context = {
+                'page_title': f'Clone — {original.product_name}',
+                'original': original,
+                'suggested_name': new_name or suggested_name,
+                'suggested_code': new_code,
+            }
+            return render(request, 'products/clone.html', context)
+
+        # ── Perform the clone inside a transaction ──────────────────
+        # If anything fails, the entire operation rolls back.
+        # We never end up with a half-cloned product.
+
+        try:
+            with transaction.atomic():
+
+                # Step 1: Create the new Product record
+                # We read the original's field values, then save
+                # as a brand new object by not specifying pk.
+                cloned_product = Product(
+                    product_name = new_name,
+                    product_code = new_code,
+                    active       = original.active,
+                    is_deleted   = False,
+                )
+                cloned_product.save()
+
+                # Step 2: Copy all BOM Items
+                # For each BOMItem on the original, create a new
+                # BOMItem pointing to the cloned product.
+                # The resource stays the same — we share the reference.
+                original_bom_items = BOMItem.objects.filter(
+                    product=original
+                ).select_related('resource')
+
+                bom_count = 0
+                for item in original_bom_items:
+                    BOMItem.objects.create(
+                        product  = cloned_product,  # ← new product
+                        resource = item.resource,   # ← same resource
+                        quantity = item.quantity,   # ← copied value
+                    )
+                    bom_count += 1
+
+                # Step 3: Copy all Wood Parts
+                original_wood_parts = WoodPart.objects.filter(
+                    product=original
+                ).select_related('resource')
+
+                wood_count = 0
+                for part in original_wood_parts:
+                    WoodPart.objects.create(
+                        product      = cloned_product,
+                        resource     = part.resource,
+                        part_name    = part.part_name,
+                        width        = part.width,
+                        breadth      = part.breadth,
+                        length       = part.length,
+                        pieces       = part.pieces,
+                        formula_type = part.formula_type,
+                    )
+                    wood_count += 1
+
+            # Clone successful
+            messages.success(
+                request,
+                f'"{original.product_name}" cloned successfully as '
+                f'"{new_name}". '
+                f'Copied {bom_count} BOM item(s) and {wood_count} wood part(s). '
+                f'You can now edit the cloned product.'
+            )
+
+            # Redirect to the cloned product's BOM page
+            # so the user can immediately start making changes
+            return redirect('bom:list', product_pk=cloned_product.pk)
+
+        except Exception as e:
+            messages.error(
+                request,
+                f'Clone failed due to an unexpected error: {e}'
+            )
+
+    # Generate a suggested product code from the new name
+    suggested_code = f'COPY-{original.product_code}'[:30]
+
+    context = {
+        'page_title': f'Clone — {original.product_name}',
+        'original': original,
+        'suggested_name': suggested_name,
+        'suggested_code': suggested_code,
+    }
+    return render(request, 'products/clone.html', context)

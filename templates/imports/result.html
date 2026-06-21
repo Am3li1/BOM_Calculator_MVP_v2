@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── Header ───────────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Import Result</h5>
+        <p class="text-muted mb-0" style="font-size:0.85rem;">
+            {{ log.file_name }} · {{ log.created_at|date:"d M Y H:i" }}
+            · Uploaded by {{ log.uploaded_by.username }}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'imports:upload' %}"
+           class="btn btn-primary btn-sm">
+            <i class="bi bi-upload me-1"></i> Import Another
+        </a>
+        <a href="{% url 'imports:history' %}"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-clock-history me-1"></i> History
+        </a>
+    </div>
+</div>
+
+
+<!-- ── Status Banner ─────────────────────────────────────────────── -->
+<div class="content-card p-4 mb-4">
+    <div class="d-flex align-items-center gap-3">
+        {% if log.status == 'success' %}
+            <div style="width:48px; height:48px; background:#d1fae5;
+                        border-radius:12px; display:flex; align-items:center;
+                        justify-content:center; font-size:1.5rem;">
+                <i class="bi bi-check-circle-fill text-success"></i>
+            </div>
+            <div>
+                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
+                    Import Successful
+                </div>
+                <div class="text-muted" style="font-size:0.85rem;">
+                    All records imported without errors.
+                </div>
+            </div>
+
+        {% elif log.status == 'partial' %}
+            <div style="width:48px; height:48px; background:#fef3c7;
+                        border-radius:12px; display:flex; align-items:center;
+                        justify-content:center; font-size:1.5rem;">
+                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+            </div>
+            <div>
+                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
+                    Partial Import
+                </div>
+                <div class="text-muted" style="font-size:0.85rem;">
+                    Most records imported.
+                    {{ error_count }} row{{ error_count|pluralize }}
+                    had issues.
+                </div>
+            </div>
+
+        {% else %}
+            <div style="width:48px; height:48px; background:#fee2e2;
+                        border-radius:12px; display:flex; align-items:center;
+                        justify-content:center; font-size:1.5rem;">
+                <i class="bi bi-x-circle-fill text-danger"></i>
+            </div>
+            <div>
+                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
+                    Import Failed
+                </div>
+                <div class="text-muted" style="font-size:0.85rem;">
+                    A critical error prevented the import from completing.
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ── Import Counts ─────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-value">{{ log.resources_imported }}</div>
+            <div class="stat-label">
+                <i class="bi bi-collection me-1"></i>Resources
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-value">{{ log.products_imported }}</div>
+            <div class="stat-label">
+                <i class="bi bi-box me-1"></i>Products
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-value">{{ log.bom_rows_imported }}</div>
+            <div class="stat-label">
+                <i class="bi bi-diagram-3 me-1"></i>BOM Rows
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-value">{{ log.wood_parts_imported }}</div>
+            <div class="stat-label">
+                <i class="bi bi-rulers me-1"></i>Dimensions
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ── Errors (if any) ───────────────────────────────────────────── -->
+{% if errors %}
+<div class="content-card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-exclamation-triangle me-2 text-warning"></i>
+            {{ error_count }} Row{{ error_count|pluralize }} Skipped
+        </span>
+        <span class="text-muted" style="font-size:0.8rem;">
+            These rows were not imported. Fix them in your workbook
+            and re-upload to add them.
+        </span>
+    </div>
+    <div class="p-4">
+        <div style="background:#fafafa; border-radius:8px;
+                    border:1px solid #f0f0f0; padding:16px;
+                    max-height:400px; overflow-y:auto;">
+            {% for error in errors %}
+            <div style="font-size:0.8rem; font-family:monospace;
+                        padding:4px 0;
+                        border-bottom:1px solid #f5f5f5;
+                        color:#dc3545;">
+                <i class="bi bi-x-circle me-1"></i>{{ error }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- ── Next Steps ────────────────────────────────────────────────── -->
+<div class="content-card p-4">
+    <div class="fw-semibold mb-3"
+         style="font-size:0.9rem; color:#1a1f3a;">
+        What would you like to do next?
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'products:list' %}"
+           class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-box me-1"></i> View Products
+        </a>
+        <a href="{% url 'resources:list' %}"
+           class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-collection me-1"></i> View Resources
+        </a>
+        <a href="{% url 'costing:list' %}"
+           class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-calculator me-1"></i> View Cost Sheets
+        </a>
+        <a href="{% url 'imports:upload' %}"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-upload me-1"></i> Import Another File
+        </a>
+    </div>
+</div>
+
+{% endblock %}

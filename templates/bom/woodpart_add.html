@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-7">
+        <div class="content-card">
+            <div class="card-header">
+                <i class="bi bi-plus-circle me-2 text-primary"></i>
+                Add Dimension Entry — <code>{{ product.product_code }}</code>
+            </div>
+            <div class="card-body p-4">
+
+                <!-- Formula explainer -->
+                <div class="alert alert-info mb-4"
+                     style="font-size:0.85rem;">
+                    <i class="bi bi-calculator me-1"></i>
+                    <strong>Auto-calculation:</strong>
+                    Quantity = (W × B × L × Pieces) ÷ {{ divisor }}
+                    <br>
+                    <span class="text-muted">
+                        Rate and Cost are fetched automatically.
+                        You only enter dimensions.
+                    </span>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <!-- Part Name -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Part Name
+                        </label>
+                        <input type="text"
+                               name="part_name"
+                               class="form-control"
+                               placeholder="e.g. Top Panel, Side Panel"
+                               required>
+                    </div>
+
+                    <!-- Material (resource) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Material
+                        </label>
+                        <select name="resource"
+                                class="form-select"
+                                required>
+                            <option value="">
+                                — Select Material —
+                            </option>
+                            {% for resource in wood_resources %}
+                            <option value="{{ resource.pk }}">
+                                {{ resource.resource_name }}
+                                ({{ resource.category }})
+                                — ₹{{ resource.rate }}/{{ resource.unit }}
+                            </option>
+                            {% empty %}
+                            <option disabled>
+                                No resources found. Add resources first.
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            All active resources are available for
+                            dimension entries.
+                        </div>
+                    </div>
+
+                    <!-- Dimensions row -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-semibold">
+                                Width
+                            </label>
+                            <input type="number"
+                                   name="width"
+                                   class="form-control"
+                                   placeholder="e.g. 24"
+                                   step="0.01"
+                                   min="0.01"
+                                   required>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-semibold">
+                                Breadth
+                            </label>
+                            <input type="number"
+                                   name="breadth"
+                                   class="form-control"
+                                   placeholder="e.g. 18"
+                                   step="0.01"
+                                   min="0.01"
+                                   required>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-semibold">
+                                Length
+                            </label>
+                            <input type="number"
+                                   name="length"
+                                   class="form-control"
+                                   placeholder="e.g. 72"
+                                   step="0.01"
+                                   min="0.01"
+                                   required>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label fw-semibold">
+                                Pieces
+                            </label>
+                            <input type="number"
+                                   name="pieces"
+                                   class="form-control"
+                                   placeholder="e.g. 2"
+                                   step="1"
+                                   min="1"
+                                   required>
+                        </div>
+                    </div>
+
+                    <div class="form-text mb-4">
+                        Divisor in use: <strong>{{ divisor }}</strong>.
+                        Change it in Django Admin → System Configuration.
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-lg me-1"></i>
+                            Add Dimension Entry
+                        </button>
+                        <a href="{% url 'bom:list' product_pk=product.pk %}"
+                           class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

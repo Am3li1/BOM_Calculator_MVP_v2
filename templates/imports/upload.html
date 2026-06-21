@@ -1,7 +1,128 @@
 {% extends "base.html" %}
+
 {% block content %}
-<div class="content-card p-4 text-center text-muted">
-    <i class="bi bi-upload" style="font-size:3rem;"></i>
-    <p class="mt-3">Excel Import — coming soon in Phase 5.</p>
+
+<div class="row">
+
+    <!-- ── Upload Form ─────────────────────────────────── -->
+    <div class="col-12 col-lg-7 mb-4">
+        <div class="content-card">
+            <div class="card-header">
+                <i class="bi bi-upload me-2 text-primary"></i>
+                Upload Excel Workbook
+            </div>
+            <div class="card-body p-4">
+
+                <!-- What this does -->
+                <div class="alert alert-info mb-4" style="font-size:0.85rem;">
+                    <i class="bi bi-info-circle me-1"></i>
+                    <strong>This will import:</strong>
+                    Resources, Products, BOM items, and Wood parts
+                    from your Excel workbook into the database.
+                    Existing records will be updated. No data will be deleted.
+                </div>
+
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            Select Workbook
+                        </label>
+                        <input type="file"
+                               name="workbook"
+                               class="form-control"
+                               accept=".xlsx,.xls"
+                               required>
+                        <div class="form-text">
+                            Accepted formats: .xlsx, .xls — Maximum size: 10MB
+                        </div>
+                    </div>
+
+                    <!-- Expected sheets info -->
+                    <div class="mb-4 p-3"
+                         style="background:#f8f9fa; border-radius:8px;
+                                border:1px solid #e9ecef;">
+                        <div class="fw-semibold mb-2"
+                             style="font-size:0.85rem; color:#1a1f3a;">
+                            Expected sheets in workbook:
+                        </div>
+                        <div class="row g-2">
+                            {% for sheet, desc in sheets_info %}
+                            <div class="col-6">
+                                <div style="font-size:0.8rem;">
+                                    <i class="bi bi-table me-1 text-success"></i>
+                                    <strong>{{ sheet }}</strong>
+                                    <span class="text-muted">— {{ desc }}</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-cloud-upload me-1"></i>
+                        Upload and Import
+                    </button>
+                </form>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Recent Import History ──────────────────────── -->
+    <div class="col-12 col-lg-5 mb-4">
+        <div class="content-card">
+            <div class="card-header d-flex justify-content-between">
+                <span>
+                    <i class="bi bi-clock-history me-2"></i>
+                    Recent Imports
+                </span>
+                <a href="{% url 'imports:history' %}"
+                   style="font-size:0.8rem;">View all</a>
+            </div>
+
+            {% if recent_logs %}
+            <div class="list-group list-group-flush">
+                {% for log in recent_logs %}
+                <a href="{% url 'imports:result' pk=log.pk %}"
+                   class="list-group-item list-group-item-action"
+                   style="font-size:0.82rem; border-color:#f0f0f0;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="fw-semibold" style="color:#1a1f3a;">
+                                {{ log.file_name }}
+                            </div>
+                            <div class="text-muted" style="font-size:0.75rem;">
+                                {{ log.created_at|date:"d M Y H:i" }}
+                                · {{ log.uploaded_by.username }}
+                            </div>
+                        </div>
+                        <span class="badge ms-2
+                            {% if log.status == 'success' %}bg-success
+                            {% elif log.status == 'partial' %}bg-warning text-dark
+                            {% elif log.status == 'failed' %}bg-danger
+                            {% else %}bg-secondary{% endif %}"
+                            style="font-size:0.7rem;">
+                            {{ log.get_status_display }}
+                        </span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-4">
+                <i class="bi bi-inbox text-muted"
+                   style="font-size:2rem; opacity:0.4;"></i>
+                <p class="text-muted mt-2 mb-0" style="font-size:0.85rem;">
+                    No imports yet.
+                </p>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
 </div>
+
 {% endblock %}

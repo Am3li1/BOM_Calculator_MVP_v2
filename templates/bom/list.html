@@ -1,7 +1,290 @@
 {% extends "base.html" %}
+
 {% block content %}
-<div class="content-card p-4 text-center text-muted">
-    <i class="bi bi-diagram-3" style="font-size:3rem;"></i>
-    <p class="mt-3">BOM module — coming soon.</p>
+
+<!-- Product Header -->
+<div class="content-card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h5 class="mb-1" style="color:#1a1f3a; font-weight:700;">
+                {{ product.product_code }}
+            </h5>
+            <div class="text-muted" style="font-size:0.9rem;">
+                {{ product.product_name }}
+            </div>
+        </div>
+        <a href="{% url 'products:list' %}"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Back to Products
+        </a>
+    </div>
 </div>
+
+
+<!-- ══ STANDARD BOM TABLE ══════════════════════════════════════════ -->
+<div class="content-card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-diagram-3 me-2 text-warning"></i>
+            Standard BOM
+            <span class="badge bg-light text-dark border ms-1"
+                  style="font-size:0.75rem;">
+                {{ bom_items.count }} item{{ bom_items.count|pluralize }}
+            </span>
+        </span>
+        <div class="d-flex align-items-center gap-3">
+            <strong style="color:#1a1f3a;">
+                Total: ₹{{ total_bom_cost|floatformat:2 }}
+            </strong>
+            <a href="{% url 'bom:add' product_pk=product.pk %}"
+               class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i> Add Item
+            </a>
+        </div>
+    </div>
+
+    {% if bom_items %}
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4">Resource</th>
+                <th>Category</th>
+                <th class="text-end">Quantity</th>
+                <th class="text-end">Unit</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end">Cost (₹)</th>
+                <th class="text-end pe-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in bom_items %}
+            <tr>
+                <td class="ps-4">{{ item.resource.resource_name }}</td>
+                <td>
+                    <span class="badge bg-light text-dark border"
+                          style="font-size:0.7rem;">
+                        {{ item.resource.category }}
+                    </span>
+                </td>
+
+                <!-- Inline quantity edit -->
+                <td class="text-end">
+                    <form method="post"
+                          action="{% url 'bom:edit_qty' pk=item.pk %}"
+                          class="d-inline-flex align-items-center gap-1">
+                        {% csrf_token %}
+                        <input type="number"
+                               name="quantity"
+                               value="{{ item.quantity }}"
+                               step="0.0001"
+                               min="0.0001"
+                               style="width:90px; text-align:right;"
+                               class="form-control form-control-sm">
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Save">
+                            <i class="bi bi-check"></i>
+                        </button>
+                    </form>
+                </td>
+
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ item.resource.unit }}
+                </td>
+
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ item.rate|floatformat:2 }}
+                    <i class="bi bi-lock-fill text-muted"
+                       style="font-size:0.65rem;" title="Read-only"></i>
+                </td>
+
+                <td class="text-end fw-semibold">
+                    {{ item.cost|floatformat:2 }}
+                </td>
+
+                <td class="text-end pe-4">
+                    <form method="post"
+                          action="{% url 'bom:remove' pk=item.pk %}"
+                          onsubmit="return confirm('Remove {{ item.resource.resource_name }}?')">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background:#f8f9fa;">
+                <td colspan="5"
+                    class="ps-4 fw-semibold text-end pe-3">
+                    Standard BOM Total
+                </td>
+                <td class="text-end fw-bold"
+                    style="color:#1a1f3a; font-size:1rem;">
+                    ₹{{ total_bom_cost|floatformat:2 }}
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    {% else %}
+    <div class="text-center py-4">
+        <i class="bi bi-diagram-3 text-muted"
+           style="font-size:2.5rem; opacity:0.4;"></i>
+        <p class="text-muted mt-2 mb-0" style="font-size:0.875rem;">
+            No standard BOM items yet.
+            <a href="{% url 'bom:add' product_pk=product.pk %}">
+                Add one now.
+            </a>
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- ══ DIMENSIONS TABLE ════════════════════════════════════════════ -->
+<div class="content-card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-rulers me-2 text-info"></i>
+            Dimensions
+            <span class="badge bg-light text-dark border ms-1"
+                  style="font-size:0.75rem;">
+                {{ wood_parts.count }} part{{ wood_parts.count|pluralize }}
+            </span>
+        </span>
+        <div class="d-flex align-items-center gap-3">
+            <strong style="color:#1a1f3a;">
+                Total: ₹{{ total_wood_cost|floatformat:2 }}
+            </strong>
+            <a href="{% url 'bom:wood_add' product_pk=product.pk %}"
+               class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i> Add Dimension
+            </a>
+        </div>
+    </div>
+
+    {% if wood_parts %}
+    <div class="table-responsive">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4">Part Name</th>
+                <th>Material</th>
+                <th class="text-end">W</th>
+                <th class="text-end">B</th>
+                <th class="text-end">L</th>
+                <th class="text-end">Pcs</th>
+                <th class="text-end">Qty (calc)</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end">Cost (₹)</th>
+                <th class="text-end pe-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for part in wood_parts %}
+            <tr>
+                <td class="ps-4">{{ part.part_name }}</td>
+                <td>
+                    <span class="badge bg-light text-dark border"
+                          style="font-size:0.7rem;">
+                        {{ part.resource.resource_name }}
+                    </span>
+                </td>
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.width|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.breadth|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.length|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.pieces }}
+                </td>
+                <td class="text-end">
+                    <span style="font-size:0.85rem;">
+                        {{ part.calculated_quantity|floatformat:4 }}
+                    </span>
+                    <i class="bi bi-lock-fill text-muted"
+                       style="font-size:0.65rem;"
+                       title="Auto-calculated"></i>
+                </td>
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.rate|floatformat:2 }}
+                    <i class="bi bi-lock-fill text-muted"
+                       style="font-size:0.65rem;"
+                       title="Read-only"></i>
+                </td>
+                <td class="text-end fw-semibold">
+                    {{ part.cost|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4">
+                    <form method="post"
+                          action="{% url 'bom:wood_remove' pk=part.pk %}"
+                          onsubmit="return confirm('Remove {{ part.part_name }}?')">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background:#f8f9fa;">
+                <td colspan="8"
+                    class="ps-4 fw-semibold text-end pe-3">
+                    Dimensions Total
+                </td>
+                <td class="text-end fw-bold"
+                    style="color:#1a1f3a; font-size:1rem;">
+                    ₹{{ total_wood_cost|floatformat:2 }}
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+    </div>
+
+    {% else %}
+    <div class="text-center py-4">
+        <i class="bi bi-rulers text-muted"
+           style="font-size:2.5rem; opacity:0.4;"></i>
+        <p class="text-muted mt-2 mb-0" style="font-size:0.875rem;">
+            No dimension entries yet.
+            <a href="{% url 'bom:wood_add' product_pk=product.pk %}">
+                Add one now.
+            </a>
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- ══ COMBINED TOTAL ═══════════════════════════════════════════════ -->
+<div class="content-card p-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <div style="font-size:0.8rem; color:#6c757d; font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.5px;">
+                Total Product Cost
+            </div>
+            <div class="text-muted" style="font-size:0.8rem;">
+                Standard BOM + Dimensions
+            </div>
+        </div>
+        <div style="font-size:1.5rem; font-weight:700; color:#1a1f3a;">
+            ₹{{ grand_total|floatformat:2 }}
+        </div>
+    </div>
+</div>
+
 {% endblock %}

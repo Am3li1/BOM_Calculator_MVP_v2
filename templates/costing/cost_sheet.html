@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        #sidebar {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        #topnav {
+            display: none !important;
+            visibility: hidden !important;
+        }
+        #main-content {
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+        .no-print { display: none !important; }
+        .content-card {
+            box-shadow: none !important;
+            border: 1px solid #dee2e6 !important;
+            break-inside: avoid;
+        }
+        table { break-inside: avoid; }
+        body { background: white !important; color: black !important; }
+        a[href]:after { content: none !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Print Button ──────────────────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+    <div>
+        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Cost Sheet</h5>
+        <p class="text-muted mb-0" style="font-size:0.85rem;">
+            All costs calculated live from current resource rates.
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <button onclick="window.print()"
+                class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-printer me-1"></i> Print
+        </button>
+        <a href="{% url 'costing:list' %}"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Back
+        </a>
+    </div>
+</div>
+
+
+<!-- ── Product Header ──────────────────────────────────────────────── -->
+<div class="content-card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div style="font-size:0.75rem; color:#6c757d; font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.5px;">
+                Product
+            </div>
+            <h4 class="mb-0 fw-bold" style="color:#1a1f3a;">
+                {{ product.product_name }}
+            </h4>
+            <code style="font-size:0.9rem; color:#6366f1;">
+                {{ product.product_code }}
+            </code>
+        </div>
+        <div class="text-end">
+            <div style="font-size:0.75rem; color:#6c757d; font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.5px;">
+                Total Cost
+            </div>
+            <div style="font-size:2rem; font-weight:700; color:#1a1f3a;">
+                ₹{{ grand_total|floatformat:2 }}
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ── Standard BOM Breakdown ──────────────────────────────────────── -->
+{% if bom_by_category %}
+<div class="content-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-diagram-3 me-2 text-warning"></i>
+        Standard BOM Costs
+    </div>
+
+    {% for category, items in bom_by_category.items %}
+    <div class="px-4 pt-3 pb-1">
+        <div style="font-size:0.72rem; font-weight:700; color:#6c757d;
+                    text-transform:uppercase; letter-spacing:1px;">
+            {{ category }}
+        </div>
+    </div>
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr style="background:#fafafa;">
+                <th class="ps-4">Resource</th>
+                <th class="text-end">Qty</th>
+                <th class="text-end">Unit</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end pe-4">Cost (₹)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="ps-4">{{ item.resource.resource_name }}</td>
+                <td class="text-end">
+                    {{ item.quantity|floatformat:4 }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ item.resource.unit }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ item.rate|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4 fw-semibold">
+                    {{ item.cost|floatformat:2 }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background:#f8f9fa;">
+                <td colspan="4"
+                    class="ps-4 text-end fw-semibold"
+                    style="font-size:0.8rem; color:#6c757d;">
+                    {{ category }} subtotal
+                </td>
+                <td class="text-end pe-4 fw-bold">
+                    ₹{{ bom_category_totals|get_item:category|floatformat:2 }}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+    <hr class="my-0" style="border-color:#f0f0f0;">
+    {% endfor %}
+
+    <div class="d-flex justify-content-between align-items-center
+                px-4 py-3"
+         style="background:#f8f9fa; border-top:2px solid #e9ecef;">
+        <span class="fw-semibold">Standard BOM Total</span>
+        <span class="fw-bold"
+              style="font-size:1.1rem; color:#1a1f3a;">
+            ₹{{ total_bom_cost|floatformat:2 }}
+        </span>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- ── Dimensions Breakdown ─────────────────────────────────────── -->
+{% if wood_by_category %}
+<div class="content-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-rulers me-2 text-info"></i>
+        Dimensions
+    </div>
+
+    {% for category, parts in wood_by_category.items %}
+    <div class="px-4 pt-3 pb-1">
+        <div style="font-size:0.72rem; font-weight:700; color:#6c757d;
+                    text-transform:uppercase; letter-spacing:1px;">
+            {{ category }}
+        </div>
+    </div>
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr style="background:#fafafa;">
+                <th class="ps-4">Part Name</th>
+                <th class="text-end">W</th>
+                <th class="text-end">B</th>
+                <th class="text-end">L</th>
+                <th class="text-end">Pcs</th>
+                <th class="text-end">Qty</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end pe-4">Cost (₹)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for part in parts %}
+            <tr>
+                <td class="ps-4">{{ part.part_name }}</td>
+                <td class="text-end text-muted">
+                    {{ part.width|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ part.breadth|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ part.length|floatformat:2 }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ part.pieces }}
+                </td>
+                <td class="text-end">
+                    {{ part.calculated_quantity|floatformat:4 }}
+                </td>
+                <td class="text-end text-muted">
+                    {{ part.rate|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4 fw-semibold">
+                    {{ part.cost|floatformat:2 }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background:#f8f9fa;">
+                <td colspan="7"
+                    class="ps-4 text-end fw-semibold"
+                    style="font-size:0.8rem; color:#6c757d;">
+                    {{ category }} subtotal
+                </td>
+                <td class="text-end pe-4 fw-bold">
+                    ₹{{ wood_category_totals|get_item:category|floatformat:2 }}
+                </td>
+            </tr>
+        </tfoot>
+    </table>
+    <hr class="my-0" style="border-color:#f0f0f0;">
+    {% endfor %}
+
+    <div class="d-flex justify-content-between align-items-center
+                px-4 py-3"
+         style="background:#f8f9fa; border-top:2px solid #e9ecef;">
+        <span class="fw-semibold">Dimensions Total</span>
+        <span class="fw-bold"
+              style="font-size:1.1rem; color:#1a1f3a;">
+            ₹{{ total_wood_cost|floatformat:2 }}
+        </span>
+    </div>
+</div>
+{% endif %}
+
+
+<!-- ── Category Summary ─────────────────────────────────────────── -->
+{% if category_summary %}
+<div class="content-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-bar-chart me-2 text-primary"></i>
+        Category-wise Summary
+    </div>
+    <table class="table mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4">Category</th>
+                <th class="text-end">Cost (₹)</th>
+                <th class="text-end pe-4">% of Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in category_summary %}
+            <tr>
+                <td class="ps-4">
+                    <span class="badge bg-light text-dark border"
+                          style="font-size:0.75rem;">
+                        {{ row.category }}
+                    </span>
+                </td>
+                <td class="text-end fw-semibold">
+                    {{ row.total|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4 text-muted">
+                    {{ row.percentage }}%
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr style="background:#f8f9fa; border-top:2px solid #e9ecef;">
+                <td class="ps-4 fw-bold">Grand Total</td>
+                <td class="text-end fw-bold"
+                    style="font-size:1rem; color:#1a1f3a;">
+                    ₹{{ grand_total|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4 fw-bold">100%</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endif %}
+
+
+<!-- ── Empty state ──────────────────────────────────────────────── -->
+{% if not bom_by_category and not wood_by_category %}
+<div class="content-card p-5 text-center">
+    <i class="bi bi-inbox text-muted"
+       style="font-size:3rem; opacity:0.4;"></i>
+    <h6 class="mt-3 text-muted">No BOM data for this product yet</h6>
+    <p class="text-muted" style="font-size:0.875rem;">
+        Add BOM items and dimension entries first.
+    </p>
+    <a href="{% url 'bom:list' product_pk=product.pk %}"
+       class="btn btn-primary btn-sm">
+        <i class="bi bi-diagram-3 me-1"></i> Go to BOM
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}

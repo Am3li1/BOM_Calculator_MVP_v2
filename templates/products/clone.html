@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-6">
+
+        <!-- What we're cloning from -->
+        <div class="content-card p-4 mb-4">
+            <div class="d-flex align-items-start gap-3">
+                <div style="width:48px; height:48px; background:#f0f0ff;
+                            border-radius:12px; display:flex; align-items:center;
+                            justify-content:center; font-size:1.4rem; flex-shrink:0;">
+                    <i class="bi bi-copy text-primary"></i>
+                </div>
+                <div>
+                    <div style="font-size:0.75rem; font-weight:600; color:#6c757d;
+                                text-transform:uppercase; letter-spacing:0.5px;">
+                        Cloning from
+                    </div>
+                    <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
+                        {{ original.product_name }}
+                    </div>
+                    <code style="font-size:0.82rem; color:#6366f1;">
+                        {{ original.product_code }}
+                    </code>
+                    <div class="mt-1" style="font-size:0.8rem; color:#6c757d;">
+                        {{ original.bom_items.count }} BOM item(s) ·
+                        {{ original.wood_parts.count }} wood part(s)
+                        will be copied
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clone form -->
+        <div class="content-card">
+            <div class="card-header">
+                <i class="bi bi-pencil-square me-2 text-primary"></i>
+                Name the new product
+            </div>
+            <div class="card-body p-4">
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <!-- New product name -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            New Product Name
+                        </label>
+                        <input type="text"
+                               name="new_product_name"
+                               class="form-control"
+                               value="{{ suggested_name }}"
+                               placeholder="e.g. Dining Table Model B"
+                               required
+                               autofocus>
+                        <div class="form-text">
+                            Give the clone a distinct name.
+                        </div>
+                    </div>
+
+                    <!-- New product code -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            New Product Code
+                        </label>
+                        <input type="text"
+                               name="new_product_code"
+                               class="form-control"
+                               value="{{ suggested_code }}"
+                               placeholder="e.g. DT-MODEL-B"
+                               maxlength="30"
+                               required>
+                        <div class="form-text">
+                            Must be unique. Maximum 30 characters.
+                        </div>
+                    </div>
+
+                    <!-- What will be cloned -->
+                    <div class="p-3 mb-4"
+                         style="background:#f8f9fa; border-radius:8px;
+                                border:1px solid #e9ecef; font-size:0.82rem;">
+                        <div class="fw-semibold mb-2" style="color:#1a1f3a;">
+                            The following will be copied:
+                        </div>
+                        <div class="d-flex gap-3">
+                            <span>
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                All BOM items &amp; quantities
+                            </span>
+                            <span>
+                                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                All Wood / Ply / MDF parts
+                            </span>
+                        </div>
+                        <div class="mt-1 text-muted">
+                            The clone is completely independent — editing it
+                            will not affect the original.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-copy me-1"></i>
+                            Create Clone
+                        </button>
+                        <a href="{% url 'bom:list' product_pk=original.pk %}"
+                           class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}

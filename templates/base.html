@@ -4,221 +4,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- Dynamic page title: child templates can override this -->
     <title>{% block title %}{{ page_title|default:"BOM Costing" }}{% endblock %} — BOM Costing System</title>
 
-    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Custom CSS -->
     <style>
-        /* ── Global ─────────────────────────────────────── */
         * { font-family: 'Inter', sans-serif; }
         body { background-color: #f5f6fa; }
 
-        /* ── Sidebar ────────────────────────────────────── */
         #sidebar {
             width: 260px;
             min-height: 100vh;
             background: #1a1f3a;
             position: fixed;
-            top: 0;
-            left: 0;
+            top: 0; left: 0;
             z-index: 1000;
             transition: all 0.3s;
             overflow-y: auto;
         }
-
         #sidebar .sidebar-brand {
             padding: 20px 24px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
         }
-
         #sidebar .sidebar-brand h5 {
-            color: #fff;
-            font-weight: 700;
-            font-size: 1rem;
-            margin: 0;
-            letter-spacing: 0.5px;
+            color: #fff; font-weight: 700;
+            font-size: 1rem; margin: 0; letter-spacing: 0.5px;
         }
-
         #sidebar .sidebar-brand small {
-            color: rgba(255,255,255,0.45);
-            font-size: 0.72rem;
+            color: rgba(255,255,255,0.45); font-size: 0.72rem;
         }
-
-        /* Nav section labels */
         #sidebar .nav-label {
             color: rgba(255,255,255,0.35);
-            font-size: 0.68rem;
-            font-weight: 600;
-            letter-spacing: 1.2px;
-            text-transform: uppercase;
+            font-size: 0.68rem; font-weight: 600;
+            letter-spacing: 1.2px; text-transform: uppercase;
             padding: 16px 24px 6px;
         }
-
-        /* Nav links */
         #sidebar .nav-link {
             color: rgba(255,255,255,0.65);
-            padding: 10px 24px;
-            font-size: 0.875rem;
-            font-weight: 400;
-            border-radius: 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            padding: 10px 24px; font-size: 0.875rem;
+            font-weight: 400; border-radius: 0;
+            display: flex; align-items: center; gap: 10px;
             transition: all 0.2s;
         }
-
         #sidebar .nav-link:hover {
-            color: #fff;
-            background: rgba(255,255,255,0.07);
+            color: #fff; background: rgba(255,255,255,0.07);
         }
-
         #sidebar .nav-link.active {
             color: #fff;
             background: rgba(99, 102, 241, 0.3);
             border-left: 3px solid #6366f1;
             font-weight: 500;
         }
+        #sidebar .nav-link i { font-size: 1rem; width: 20px; text-align: center; }
 
-        #sidebar .nav-link i {
-            font-size: 1rem;
-            width: 20px;
-            text-align: center;
-        }
+        #main-content { margin-left: 260px; min-height: 100vh; transition: all 0.3s; }
 
-        /* ── Main Content ────────────────────────────────── */
-        #main-content {
-            margin-left: 260px;
-            min-height: 100vh;
-            transition: all 0.3s;
-        }
-
-        /* ── Top Navbar ──────────────────────────────────── */
         #topnav {
             background: #fff;
             border-bottom: 1px solid #e9ecef;
-            padding: 0 24px;
-            height: 60px;
-            display: flex;
-            align-items: center;
+            padding: 0 24px; height: 60px;
+            display: flex; align-items: center;
             justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 999;
+            position: sticky; top: 0; z-index: 999;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        #topnav .page-title { font-size: 1rem; font-weight: 600; color: #1a1f3a; margin: 0; }
 
-        #topnav .page-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #1a1f3a;
-            margin: 0;
-        }
+        .content-area { padding: 24px; }
 
-        /* ── Page Content Area ───────────────────────────── */
-        .content-area {
-            padding: 24px;
-        }
-
-        /* ── Cards ───────────────────────────────────────── */
         .stat-card {
-            background: #fff;
-            border-radius: 12px;
-            border: none;
+            background: #fff; border-radius: 12px; border: none;
             box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-            padding: 20px 24px;
-            transition: transform 0.2s;
+            padding: 20px 24px; transition: transform 0.2s;
         }
-
         .stat-card:hover { transform: translateY(-2px); }
-
         .stat-card .stat-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.3rem;
+            width: 48px; height: 48px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
         }
+        .stat-card .stat-value { font-size: 1.75rem; font-weight: 700; color: #1a1f3a; line-height: 1.2; }
+        .stat-card .stat-label { font-size: 0.8rem; color: #6c757d; font-weight: 500; }
 
-        .stat-card .stat-value {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #1a1f3a;
-            line-height: 1.2;
-        }
-
-        .stat-card .stat-label {
-            font-size: 0.8rem;
-            color: #6c757d;
-            font-weight: 500;
-        }
-
-        /* ── Content Cards ───────────────────────────────── */
         .content-card {
-            background: #fff;
-            border-radius: 12px;
-            border: none;
+            background: #fff; border-radius: 12px; border: none;
             box-shadow: 0 1px 4px rgba(0,0,0,0.06);
         }
-
         .content-card .card-header {
-            background: none;
-            border-bottom: 1px solid #f0f0f0;
-            padding: 16px 20px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: #1a1f3a;
+            background: none; border-bottom: 1px solid #f0f0f0;
+            padding: 16px 20px; font-weight: 600; font-size: 0.9rem; color: #1a1f3a;
         }
 
-        /* ── Tables ──────────────────────────────────────── */
         .table th {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #6c757d;
-            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.75rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            color: #6c757d; border-bottom: 1px solid #f0f0f0;
         }
+        .table td { font-size: 0.875rem; vertical-align: middle; color: #344054; }
 
-        .table td {
-            font-size: 0.875rem;
-            vertical-align: middle;
-            color: #344054;
-        }
+        .badge-category { font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
 
-        /* ── Badges ──────────────────────────────────────── */
-        .badge-category {
-            font-size: 0.7rem;
-            font-weight: 600;
-            padding: 3px 8px;
-            border-radius: 4px;
-        }
+        .btn-primary { background: #6366f1; border-color: #6366f1; }
+        .btn-primary:hover { background: #4f46e5; border-color: #4f46e5; }
 
-        /* ── Buttons ─────────────────────────────────────── */
-        .btn-primary {
-            background: #6366f1;
-            border-color: #6366f1;
-        }
-        .btn-primary:hover {
-            background: #4f46e5;
-            border-color: #4f46e5;
-        }
-
-        /* ── Alerts / Messages ───────────────────────────── */
         .alert { border-radius: 10px; font-size: 0.875rem; }
 
-        /* ── Print: hide sidebar & nav ───────────────────── */
         @media print {
             #sidebar, #topnav { display: none !important; }
             #main-content { margin-left: 0 !important; }
@@ -233,19 +124,14 @@
 
 {% if user.is_authenticated %}
 
-    <!-- ══ SIDEBAR ══════════════════════════════════════════════════ -->
     <nav id="sidebar">
-
-        <!-- Brand -->
         <div class="sidebar-brand">
             <h5><i class="bi bi-box-seam me-2"></i>BOM Costing</h5>
             <small>Manufacturing Cost System</small>
         </div>
 
-        <!-- Navigation -->
         <ul class="nav flex-column mt-2">
 
-            <!-- Main -->
             <li><span class="nav-label">Main</span></li>
             <li class="nav-item">
                 <a href="{% url 'core:dashboard' %}"
@@ -254,7 +140,6 @@
                 </a>
             </li>
 
-            <!-- Catalogue -->
             <li><span class="nav-label">Catalogue</span></li>
             <li class="nav-item">
                 <a href="{% url 'products:list' %}"
@@ -269,10 +154,10 @@
                 </a>
             </li>
 
-            <!-- Costing -->
             <li><span class="nav-label">Costing</span></li>
             <li class="nav-item">
-                <a href="{% url 'bom:list' %}"
+                <!-- BOM links to Products list — user picks a product there first -->
+                <a href="{% url 'products:list' %}"
                    class="nav-link {% if 'bom' in request.resolver_match.namespace %}active{% endif %}">
                     <i class="bi bi-diagram-3"></i> BOM
                 </a>
@@ -284,7 +169,6 @@
                 </a>
             </li>
 
-            <!-- Data -->
             <li><span class="nav-label">Data</span></li>
             <li class="nav-item">
                 <a href="{% url 'imports:upload' %}"
@@ -293,7 +177,6 @@
                 </a>
             </li>
 
-            <!-- Admin -->
             <li><span class="nav-label">System</span></li>
             {% if user.is_staff %}
             <li class="nav-item">
@@ -302,10 +185,10 @@
                 </a>
             </li>
             {% endif %}
+
         </ul>
 
-        <!-- User info at bottom -->
-        <div style="position:absolute; bottom:0; left:0; right:0; 
+        <div style="position:absolute; bottom:0; left:0; right:0;
                     padding:16px 24px; border-top:1px solid rgba(255,255,255,0.08);">
             <div class="d-flex align-items-center gap-2">
                 <div style="width:32px;height:32px;background:#6366f1;border-radius:8px;
@@ -322,20 +205,15 @@
                         {% if user.is_staff %}Administrator{% else %}User{% endif %}
                     </div>
                 </div>
-                <a href="{% url 'accounts:logout' %}" 
+                <a href="{% url 'accounts:logout' %}"
                    style="color:rgba(255,255,255,0.4);" title="Logout">
                     <i class="bi bi-box-arrow-right"></i>
                 </a>
             </div>
         </div>
-
     </nav>
-    <!-- ══ END SIDEBAR ══════════════════════════════════════════════ -->
 
-    <!-- ══ MAIN CONTENT ═════════════════════════════════════════════ -->
     <div id="main-content">
-
-        <!-- Top Navbar -->
         <div id="topnav">
             <h6 class="page-title">
                 {% block page_title %}{{ page_title|default:"Dashboard" }}{% endblock %}
@@ -348,7 +226,6 @@
             </div>
         </div>
 
-        <!-- Flash Messages -->
         {% if messages %}
         <div class="px-4 pt-3">
             {% for message in messages %}
@@ -361,22 +238,16 @@
         </div>
         {% endif %}
 
-        <!-- Page Content -->
         <div class="content-area">
             {% block content %}{% endblock %}
         </div>
-
     </div>
-    <!-- ══ END MAIN CONTENT ═════════════════════════════════════════ -->
 
 {% else %}
-    <!-- Not logged in — just render the block (login page) -->
     {% block unauthenticated_content %}{% endblock %}
 {% endif %}
 
-<!-- Bootstrap 5 JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 {% block extra_js %}{% endblock %}
 
 </body>
