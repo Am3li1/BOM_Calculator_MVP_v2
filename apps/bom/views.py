@@ -114,68 +114,169 @@ def bom_edit_quantity(request, pk):
 @login_required
 def woodpart_add(request, product_pk):
     """
-    Adds a WoodPart to a product.
-    User enters dimensions — system calculates quantity and cost.
+    Adds a Dimension entry to a product.
+    All active resources are available (not just Wood/Ply/MDF).
     """
     from apps.resources.models import Resource
     from apps.core.models import SystemConfig
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
-
-    # Only show Wood/Ply/MDF resources — those are the only valid material types
-    # for cut parts. Filter by category so the dropdown isn't cluttered.
-    wood_resources = Resource.objects.filter(
-        active=True,
-        category__in=['Wood', 'Ply', 'MDF']
-    )
-
-    # Get the current divisor so we can show it on the form
+    all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
     config = SystemConfig.get_config()
 
+    # Unit choices passed to template so we don't hardcode them there
+    unit_choices = [
+        ('in',   'Inches'),
+        ('ft',   'Feet'),
+        ('sqft', 'Square Feet'),
+        ('cft',  'Cubic Feet'),
+        ('mm',   'Millimeters'),
+        ('cm',   'Centimeters'),
+        ('m',    'Meters'),
+        ('nos',  'Numbers'),
+    ]
+
     if request.method == 'POST':
+        from .models import WoodPart
+
         resource_id  = request.POST.get('resource')
         part_name    = request.POST.get('part_name', '').strip()
         width        = request.POST.get('width')
         breadth      = request.POST.get('breadth')
+        height       = request.POST.get('height') or '0'
         length       = request.POST.get('length')
         pieces       = request.POST.get('pieces')
+        width_unit   = request.POST.get('width_unit', 'in')
+        breadth_unit = request.POST.get('breadth_unit', 'in')
+        height_unit  = request.POST.get('height_unit', 'in')
+        length_unit  = request.POST.get('length_unit', 'in')
 
-        # Validate that nothing is blank
         if not all([resource_id, part_name, width, breadth, length, pieces]):
-            messages.error(request, 'All fields are required.')
+            messages.error(request, 'All fields except Height are required.')
         else:
             try:
-                from .models import WoodPart
-
                 resource = Resource.objects.get(pk=resource_id, active=True)
 
                 WoodPart.objects.create(
-                    product  = product,
-                    resource = resource,
-                    part_name = part_name,
-                    width    = float(width),
-                    breadth  = float(breadth),
-                    length   = float(length),
-                    pieces   = int(pieces),
+                    product      = product,
+                    resource     = resource,
+                    part_name    = part_name,
+                    width        = float(width),
+                    breadth      = float(breadth),
+                    height       = float(height),
+                    length       = float(length),
+                    pieces       = int(pieces),
+                    width_unit   = width_unit,
+                    breadth_unit = breadth_unit,
+                    height_unit  = height_unit,
+                    length_unit  = length_unit,
                 )
                 messages.success(
                     request,
-                    f'Wood part "{part_name}" added successfully.'
+                    f'Dimension entry "{part_name}" added successfully.'
                 )
                 return redirect('bom:list', product_pk=product.pk)
 
             except Resource.DoesNotExist:
                 messages.error(request, 'Invalid resource selected.')
             except ValueError:
-                messages.error(request, 'Please enter valid numbers for all dimensions.')
+                messages.error(
+                    request,
+                    'Please enter valid numbers for all dimensions.'
+                )
 
     context = {
-        'page_title': f'Add Wood Part — {product.product_code}',
+        'page_title': f'Add Dimension — {product.product_code}',
         'product': product,
-        'wood_resources': wood_resources,
+        'all_resources': all_resources,
+        'unit_choices': unit_choices,
         'divisor': config.wood_divisor,
     }
     return render(request, 'bom/woodpart_add.html', context)
+
+
+@login_required
+def woodpart_edit(request, pk):
+    """
+    Edits an existing Dimension entry.
+    All dimension fields and units are editable.
+    Resource can also be changed.
+    """
+    from .models import WoodPart
+    from apps.resources.models import Resource
+    from apps.core.models import SystemConfig
+
+    wood_part = get_object_or_404(WoodPart, pk=pk)
+    product = wood_part.product
+    all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
+    config = SystemConfig.get_config()
+
+    unit_choices = [
+        ('in',   'Inches'),
+        ('ft',   'Feet'),
+        ('sqft', 'Square Feet'),
+        ('cft',  'Cubic Feet'),
+        ('mm',   'Millimeters'),
+        ('cm',   'Centimeters'),
+        ('m',    'Meters'),
+        ('nos',  'Numbers'),
+    ]
+
+    if request.method == 'POST':
+        resource_id  = request.POST.get('resource')
+        part_name    = request.POST.get('part_name', '').strip()
+        width        = request.POST.get('width')
+        breadth      = request.POST.get('breadth')
+        height       = request.POST.get('height') or '0'
+        length       = request.POST.get('length')
+        pieces       = request.POST.get('pieces')
+        width_unit   = request.POST.get('width_unit', 'in')
+        breadth_unit = request.POST.get('breadth_unit', 'in')
+        height_unit  = request.POST.get('height_unit', 'in')
+        length_unit  = request.POST.get('length_unit', 'in')
+
+        if not all([resource_id, part_name, width, breadth, length, pieces]):
+            messages.error(request, 'All fields except Height are required.')
+        else:
+            try:
+                resource = Resource.objects.get(pk=resource_id, active=True)
+
+                wood_part.resource     = resource
+                wood_part.part_name    = part_name
+                wood_part.width        = float(width)
+                wood_part.breadth      = float(breadth)
+                wood_part.height       = float(height)
+                wood_part.length       = float(length)
+                wood_part.pieces       = int(pieces)
+                wood_part.width_unit   = width_unit
+                wood_part.breadth_unit = breadth_unit
+                wood_part.height_unit  = height_unit
+                wood_part.length_unit  = length_unit
+                wood_part.save()
+
+                messages.success(
+                    request,
+                    f'Dimension entry "{part_name}" updated.'
+                )
+                return redirect('bom:list', product_pk=product.pk)
+
+            except Resource.DoesNotExist:
+                messages.error(request, 'Invalid resource selected.')
+            except ValueError:
+                messages.error(
+                    request,
+                    'Please enter valid numbers for all dimensions.'
+                )
+
+    context = {
+        'page_title': f'Edit Dimension — {product.product_code}',
+        'product': product,
+        'wood_part': wood_part,
+        'all_resources': all_resources,
+        'unit_choices': unit_choices,
+        'divisor': config.wood_divisor,
+    }
+    return render(request, 'bom/woodpart_edit.html', context)
 
 
 @login_required

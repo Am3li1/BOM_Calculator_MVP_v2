@@ -12,5 +12,6 @@ urlpatterns = [
 
     # Wood Parts
     path('<int:product_pk>/wood/add/',      views.woodpart_add,    name='wood_add'),
+     path('wood/<int:pk>/edit/',         views.woodpart_edit,     name='wood_edit'),
     path('wood/<int:pk>/remove/',           views.woodpart_remove, name='wood_remove'),
 ]

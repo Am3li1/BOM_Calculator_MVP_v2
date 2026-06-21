@@ -157,15 +157,10 @@
                 {{ wood_parts.count }} part{{ wood_parts.count|pluralize }}
             </span>
         </span>
-        <div class="d-flex align-items-center gap-3">
-            <strong style="color:#1a1f3a;">
-                Total: ₹{{ total_wood_cost|floatformat:2 }}
-            </strong>
-            <a href="{% url 'bom:wood_add' product_pk=product.pk %}"
-               class="btn btn-primary btn-sm">
-                <i class="bi bi-plus-lg me-1"></i> Add Dimension
-            </a>
-        </div>
+        <a href="{% url 'bom:wood_add' product_pk=product.pk %}"
+           class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i> Add Dimension
+        </a>
     </div>
 
     {% if wood_parts %}
@@ -175,13 +170,12 @@
             <tr>
                 <th class="ps-4">Part Name</th>
                 <th>Material</th>
-                <th class="text-end">W</th>
-                <th class="text-end">B</th>
-                <th class="text-end">L</th>
+                <th class="text-end">Width</th>
+                <th class="text-end">Breadth</th>
+                <th class="text-end">Height</th>
+                <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
-                <th class="text-end">Qty (calc)</th>
-                <th class="text-end">Rate (₹)</th>
-                <th class="text-end">Cost (₹)</th>
+                <th class="text-end">Calc Qty</th>
                 <th class="text-end pe-4">Actions</th>
             </tr>
         </thead>
@@ -195,62 +189,82 @@
                         {{ part.resource.resource_name }}
                     </span>
                 </td>
-                <td class="text-end text-muted" style="font-size:0.85rem;">
+
+                <!-- Width with unit -->
+                <td class="text-end" style="font-size:0.82rem;">
                     {{ part.width|floatformat:2 }}
+                    <span class="text-muted"
+                          style="font-size:0.72rem;">
+                        {{ part.width_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted" style="font-size:0.85rem;">
+
+                <!-- Breadth with unit -->
+                <td class="text-end" style="font-size:0.82rem;">
                     {{ part.breadth|floatformat:2 }}
+                    <span class="text-muted"
+                          style="font-size:0.72rem;">
+                        {{ part.breadth_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted" style="font-size:0.85rem;">
+
+                <!-- Height with unit (show dash if zero) -->
+                <td class="text-end" style="font-size:0.82rem;">
+                    {% if part.height %}
+                        {{ part.height|floatformat:2 }}
+                        <span class="text-muted"
+                              style="font-size:0.72rem;">
+                            {{ part.height_unit }}
+                        </span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- Length with unit -->
+                <td class="text-end" style="font-size:0.82rem;">
                     {{ part.length|floatformat:2 }}
+                    <span class="text-muted"
+                          style="font-size:0.72rem;">
+                        {{ part.length_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted" style="font-size:0.85rem;">
+
+                <td class="text-end text-muted"
+                    style="font-size:0.82rem;">
                     {{ part.pieces }}
                 </td>
-                <td class="text-end">
-                    <span style="font-size:0.85rem;">
-                        {{ part.calculated_quantity|floatformat:4 }}
-                    </span>
+
+                <!-- Calculated quantity — auto, lock icon -->
+                <td class="text-end" style="font-size:0.82rem;">
+                    {{ part.calculated_quantity|floatformat:4 }}
                     <i class="bi bi-lock-fill text-muted"
                        style="font-size:0.65rem;"
                        title="Auto-calculated"></i>
                 </td>
-                <td class="text-end text-muted" style="font-size:0.85rem;">
-                    {{ part.rate|floatformat:2 }}
-                    <i class="bi bi-lock-fill text-muted"
-                       style="font-size:0.65rem;"
-                       title="Read-only"></i>
-                </td>
-                <td class="text-end fw-semibold">
-                    {{ part.cost|floatformat:2 }}
-                </td>
+
+                <!-- Edit + Remove -->
                 <td class="text-end pe-4">
-                    <form method="post"
-                          action="{% url 'bom:wood_remove' pk=part.pk %}"
-                          onsubmit="return confirm('Remove {{ part.part_name }}?')">
-                        {% csrf_token %}
-                        <button type="submit"
-                                class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </form>
+                    <div class="d-flex gap-1 justify-content-end">
+                        <a href="{% url 'bom:wood_edit' pk=part.pk %}"
+                           class="btn btn-sm btn-outline-primary"
+                           title="Edit">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form method="post"
+                              action="{% url 'bom:wood_remove' pk=part.pk %}"
+                              onsubmit="return confirm('Remove {{ part.part_name }}?')">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
-        <tfoot>
-            <tr style="background:#f8f9fa;">
-                <td colspan="8"
-                    class="ps-4 fw-semibold text-end pe-3">
-                    Dimensions Total
-                </td>
-                <td class="text-end fw-bold"
-                    style="color:#1a1f3a; font-size:1rem;">
-                    ₹{{ total_wood_cost|floatformat:2 }}
-                </td>
-                <td></td>
-            </tr>
-        </tfoot>
     </table>
     </div>
 

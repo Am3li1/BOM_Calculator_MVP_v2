@@ -6,19 +6,10 @@
     <div class="col-12 col-lg-8">
         <div class="content-card">
             <div class="card-header">
-                <i class="bi bi-plus-circle me-2 text-primary"></i>
-                Add Dimension Entry — <code>{{ product.product_code }}</code>
+                <i class="bi bi-pencil me-2 text-primary"></i>
+                Edit Dimension — <code>{{ product.product_code }}</code>
             </div>
             <div class="card-body p-4">
-
-                <div class="alert alert-info mb-4"
-                     style="font-size:0.85rem;">
-                    <i class="bi bi-info-circle me-1"></i>
-                    <strong>Dimensions only.</strong>
-                    Enter the physical measurements of the part.
-                    Quantity is calculated automatically.
-                    Rate and Cost are managed in the Standard BOM section.
-                </div>
 
                 <form method="post">
                     {% csrf_token %}
@@ -31,7 +22,7 @@
                         <input type="text"
                                name="part_name"
                                class="form-control"
-                               placeholder="e.g. Top Panel, Side Rail"
+                               value="{{ wood_part.part_name }}"
                                required autofocus>
                     </div>
 
@@ -48,7 +39,10 @@
                             {% for group in grouped %}
                             <optgroup label="{{ group.grouper }}">
                                 {% for resource in group.list %}
-                                <option value="{{ resource.pk }}">
+                                <option value="{{ resource.pk }}"
+                                    {% if resource.pk == wood_part.resource.pk %}
+                                        selected
+                                    {% endif %}>
                                     {{ resource.resource_name }}
                                     — {{ resource.unit }}
                                 </option>
@@ -58,7 +52,7 @@
                         </select>
                     </div>
 
-                    <!-- Width -->
+                    <!-- Dimensions -->
                     <div class="row g-2 mb-3 align-items-end">
                         <div class="col-12" style="font-size:0.78rem;
                              font-weight:600; color:#6c757d;
@@ -66,24 +60,23 @@
                             Dimensions
                         </div>
 
+                        <!-- Width -->
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Width
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Width</label>
                             <input type="number" name="width"
                                    class="form-control form-control-sm"
-                                   placeholder="0" step="0.0001"
-                                   min="0" required>
+                                   value="{{ wood_part.width }}"
+                                   step="0.0001" min="0" required>
                         </div>
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Unit
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Unit</label>
                             <select name="width_unit"
                                     class="form-select form-select-sm">
                                 {% for val, label in unit_choices %}
                                 <option value="{{ val }}"
-                                    {% if val == 'in' %}selected{% endif %}>
+                                    {% if val == wood_part.width_unit %}
+                                        selected
+                                    {% endif %}>
                                     {{ label }}
                                 </option>
                                 {% endfor %}
@@ -92,51 +85,47 @@
 
                         <!-- Breadth -->
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Breadth
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Breadth</label>
                             <input type="number" name="breadth"
                                    class="form-control form-control-sm"
-                                   placeholder="0" step="0.0001"
-                                   min="0" required>
+                                   value="{{ wood_part.breadth }}"
+                                   step="0.0001" min="0" required>
                         </div>
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Unit
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Unit</label>
                             <select name="breadth_unit"
                                     class="form-select form-select-sm">
                                 {% for val, label in unit_choices %}
                                 <option value="{{ val }}"
-                                    {% if val == 'in' %}selected{% endif %}>
+                                    {% if val == wood_part.breadth_unit %}
+                                        selected
+                                    {% endif %}>
                                     {{ label }}
                                 </option>
                                 {% endfor %}
                             </select>
                         </div>
 
-                        <!-- Height (optional) -->
+                        <!-- Height -->
                         <div class="col-6 col-md-2">
                             <label class="form-label fw-semibold mb-1">
                                 Height
-                                <span class="text-muted fw-normal">
-                                    (opt)
-                                </span>
+                                <span class="text-muted fw-normal">(opt)</span>
                             </label>
                             <input type="number" name="height"
                                    class="form-control form-control-sm"
-                                   placeholder="0" step="0.0001"
-                                   min="0">
+                                   value="{{ wood_part.height }}"
+                                   step="0.0001" min="0">
                         </div>
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Unit
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Unit</label>
                             <select name="height_unit"
                                     class="form-select form-select-sm">
                                 {% for val, label in unit_choices %}
                                 <option value="{{ val }}"
-                                    {% if val == 'in' %}selected{% endif %}>
+                                    {% if val == wood_part.height_unit %}
+                                        selected
+                                    {% endif %}>
                                     {{ label }}
                                 </option>
                                 {% endfor %}
@@ -146,25 +135,22 @@
 
                     <!-- Length + Pieces -->
                     <div class="row g-2 mb-4 align-items-end">
-
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Length
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Length</label>
                             <input type="number" name="length"
                                    class="form-control form-control-sm"
-                                   placeholder="0" step="0.0001"
-                                   min="0" required>
+                                   value="{{ wood_part.length }}"
+                                   step="0.0001" min="0" required>
                         </div>
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Unit
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Unit</label>
                             <select name="length_unit"
                                     class="form-select form-select-sm">
                                 {% for val, label in unit_choices %}
                                 <option value="{{ val }}"
-                                    {% if val == 'in' %}selected{% endif %}>
+                                    {% if val == wood_part.length_unit %}
+                                        selected
+                                    {% endif %}>
                                     {{ label }}
                                 </option>
                                 {% endfor %}
@@ -172,28 +158,23 @@
                         </div>
 
                         <div class="col-6 col-md-2">
-                            <label class="form-label fw-semibold mb-1">
-                                Pieces
-                            </label>
+                            <label class="form-label fw-semibold mb-1">Pieces</label>
                             <input type="number" name="pieces"
                                    class="form-control form-control-sm"
-                                   placeholder="1" step="1"
-                                   min="1" value="1" required>
+                                   value="{{ wood_part.pieces }}"
+                                   step="1" min="1" required>
                         </div>
                     </div>
 
-                    <div class="form-text mb-4"
-                         style="font-size:0.8rem;">
+                    <div class="form-text mb-4" style="font-size:0.8rem;">
                         <i class="bi bi-info-circle me-1"></i>
-                        Calculated quantity uses divisor:
-                        <strong>{{ divisor }}</strong>.
-                        Change in Django Admin → System Configuration.
+                        Divisor in use: <strong>{{ divisor }}</strong>.
                     </div>
 
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-plus-lg me-1"></i>
-                            Add Dimension Entry
+                            <i class="bi bi-check-lg me-1"></i>
+                            Save Changes
                         </button>
                         <a href="{% url 'bom:list' product_pk=product.pk %}"
                            class="btn btn-outline-secondary">

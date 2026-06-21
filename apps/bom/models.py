@@ -73,107 +73,110 @@ class BOMItem(models.Model):
 
 class WoodPart(models.Model):
     """
-    Represents a single wood/ply/MDF cut piece for a product.
-    
-    Example:
-        3-Door Wardrobe — Top Panel
-        Width=24, Breadth=18, Length=72, Pieces=1
-        Formula: (24 × 18 × 72 × 1) ÷ 144 = 216 SFT
-    
-    Why separate from BOMItem?
-        Wood parts have dimensional data (W × B × L) that standard
-        BOM items don't have. The quantity is derived from dimensions,
-        not entered directly.
+    A dimensional entry for a product.
+    Captures physical measurements and calculates material quantity.
+
+    Units are stored per-dimension so that mixed-unit products
+    (e.g. width in inches, length in feet) are supported.
     """
 
-    FORMULA_CHOICES = [
-        ('standard', 'Standard: (W × B × L × Pieces) ÷ Divisor'),
-        # Add future formula types here without changing existing data
+    UNIT_CHOICES = [
+        ('in',   'Inches'),
+        ('ft',   'Feet'),
+        ('sqft', 'Square Feet'),
+        ('cft',  'Cubic Feet'),
+        ('mm',   'Millimeters'),
+        ('cm',   'Centimeters'),
+        ('m',    'Meters'),
+        ('nos',  'Numbers'),
     ]
 
-    product = models.ForeignKey(
-        Product,
+    FORMULA_CHOICES = [
+        ('standard', 'Standard (W × B × L × Pcs ÷ Divisor)'),
+        ('area',     'Area (W × L × Pcs ÷ Divisor)'),
+        ('custom',   'Custom'),
+    ]
+
+    product  = models.ForeignKey(
+        'products.Product',
         on_delete=models.CASCADE,
         related_name='wood_parts',
-        help_text="The product this wood part belongs to."
     )
-
     resource = models.ForeignKey(
-        Resource,
+        'resources.Resource',
         on_delete=models.PROTECT,
         related_name='wood_parts',
-        help_text="The wood/ply/MDF resource being used."
     )
 
-    part_name = models.CharField(
-        max_length=255,
-        help_text="Descriptive name for this part e.g. Top Panel, Side Panel, Back Panel"
-    )
+    part_name = models.CharField(max_length=200)
 
-    width = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        help_text="Width of the piece (in inches or as per your unit system)."
+    # Dimensions
+    width   = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    breadth = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    height  = models.DecimalField(
+        max_digits=10, decimal_places=4,
+        default=0, blank=True,
+        help_text="Optional. Use for 3D parts."
     )
+    length  = models.DecimalField(max_digits=10, decimal_places=4, default=0)
+    pieces  = models.PositiveIntegerField(default=1)
 
-    breadth = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        help_text="Breadth/depth of the piece."
+    # Units per dimension
+    width_unit   = models.CharField(
+        max_length=10, choices=UNIT_CHOICES, default='in'
     )
-
-    length = models.DecimalField(
-        max_digits=10,
-        decimal_places=4,
-        help_text="Length/height of the piece."
+    breadth_unit = models.CharField(
+        max_length=10, choices=UNIT_CHOICES, default='in'
     )
-
-    pieces = models.PositiveIntegerField(
-        default=1,
-        help_text="How many identical pieces of this part are needed?"
+    height_unit  = models.CharField(
+        max_length=10, choices=UNIT_CHOICES, default='in'
+    )
+    length_unit  = models.CharField(
+        max_length=10, choices=UNIT_CHOICES, default='in'
     )
 
     formula_type = models.CharField(
-        max_length=50,
+        max_length=20,
         choices=FORMULA_CHOICES,
         default='standard',
-        help_text="Which formula to use for quantity calculation."
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['resource__category', 'part_name']
-        verbose_name = "Wood Part"
-        verbose_name_plural = "Wood Parts"
+        ordering = ['part_name']
 
     def __str__(self):
-        return f"{self.product.product_code} | {self.part_name} ({self.resource.resource_name})"
+        return f'{self.product.product_code} — {self.part_name}'
 
-    # ── Calculated Properties ───────────────────────────────────────
     @property
     def calculated_quantity(self):
-        """
-        System calculates this. Users cannot edit it.
-        Formula: (Width × Breadth × Length × Pieces) ÷ Divisor
-        Divisor comes from SystemConfig — never hardcoded.
-        """
         from apps.core.models import SystemConfig
-        divisor = SystemConfig.get_config().wood_divisor
-        if divisor == 0:
-            return 0
-        return (self.width * self.breadth * self.length * self.pieces) / divisor
-
-    @property
-    def rate(self):
-        """Always fetched live from Resource master."""
-        return self.resource.rate
+        from decimal import Decimal
+    
+        config = SystemConfig.get_config()
+        divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
+    
+        w = Decimal(str(self.width))
+        b = Decimal(str(self.breadth))
+        h = Decimal(str(self.height)) if self.height else Decimal('1')
+        l = Decimal(str(self.length))
+        p = Decimal(str(self.pieces))
+    
+        if self.formula_type == 'area':
+            return (w * l * p) / divisor
+        else:
+            effective_h = h if h > 0 else Decimal('1')
+            return (w * b * effective_h * l * p) / divisor
+    
+        @property
+        def rate(self):
+            """Live rate from Resource master — never stored."""
+            return self.resource.rate
 
     @property
     def cost(self):
-        """
-        Wood Cost = Calculated Quantity × Resource Rate
-        Never stored. Always calculated.
-        """
-        return self.calculated_quantity * self.resource.rate
+        """Calculated cost — never stored."""
+        from decimal import Decimal
+        return Decimal(str(self.calculated_quantity)) * self.resource.rate
