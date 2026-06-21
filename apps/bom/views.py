@@ -12,12 +12,19 @@ def bom_list(request, product_pk):
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
 
-    bom_items  = BOMItem.objects.filter(product=product).select_related('resource')
-    wood_parts = WoodPart.objects.filter(product=product).select_related('resource')
+    bom_items  = BOMItem.objects.filter(
+        product=product
+    ).select_related('resource')
 
-    total_bom_cost  = sum(item.cost for item in bom_items)
-    total_wood_cost = sum(part.cost for part in wood_parts)
-    grand_total     = total_bom_cost + total_wood_cost
+    wood_parts = WoodPart.objects.filter(
+        product=product
+    ).select_related('resource')
+
+    # Grand total is Standard BOM only.
+    # Dimensions are measurement records — their cost is already
+    # represented in the Standard BOM and must not be added again.
+    total_bom_cost = sum(item.cost for item in bom_items)
+    grand_total    = total_bom_cost
 
     context = {
         'page_title': f'BOM — {product.product_code}',
@@ -25,7 +32,6 @@ def bom_list(request, product_pk):
         'bom_items': bom_items,
         'wood_parts': wood_parts,
         'total_bom_cost': total_bom_cost,
-        'total_wood_cost': total_wood_cost,
         'grand_total': grand_total,
     }
     return render(request, 'bom/list.html', context)

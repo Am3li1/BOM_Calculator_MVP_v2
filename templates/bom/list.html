@@ -190,30 +190,24 @@
                     </span>
                 </td>
 
-                <!-- Width with unit -->
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.width|floatformat:2 }}
-                    <span class="text-muted"
-                          style="font-size:0.72rem;">
+                    <span class="text-muted" style="font-size:0.72rem;">
                         {{ part.width_unit }}
                     </span>
                 </td>
 
-                <!-- Breadth with unit -->
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.breadth|floatformat:2 }}
-                    <span class="text-muted"
-                          style="font-size:0.72rem;">
+                    <span class="text-muted" style="font-size:0.72rem;">
                         {{ part.breadth_unit }}
                     </span>
                 </td>
 
-                <!-- Height with unit (show dash if zero) -->
                 <td class="text-end" style="font-size:0.82rem;">
                     {% if part.height %}
                         {{ part.height|floatformat:2 }}
-                        <span class="text-muted"
-                              style="font-size:0.72rem;">
+                        <span class="text-muted" style="font-size:0.72rem;">
                             {{ part.height_unit }}
                         </span>
                     {% else %}
@@ -221,21 +215,17 @@
                     {% endif %}
                 </td>
 
-                <!-- Length with unit -->
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.length|floatformat:2 }}
-                    <span class="text-muted"
-                          style="font-size:0.72rem;">
+                    <span class="text-muted" style="font-size:0.72rem;">
                         {{ part.length_unit }}
                     </span>
                 </td>
 
-                <td class="text-end text-muted"
-                    style="font-size:0.82rem;">
+                <td class="text-end text-muted" style="font-size:0.82rem;">
                     {{ part.pieces }}
                 </td>
 
-                <!-- Calculated quantity — auto, lock icon -->
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.calculated_quantity|floatformat:4 }}
                     <i class="bi bi-lock-fill text-muted"
@@ -243,7 +233,6 @@
                        title="Auto-calculated"></i>
                 </td>
 
-                <!-- Edit + Remove -->
                 <td class="text-end pe-4">
                     <div class="d-flex gap-1 justify-content-end">
                         <a href="{% url 'bom:wood_edit' pk=part.pk %}"
@@ -283,7 +272,7 @@
 </div>
 
 
-<!-- ══ COMBINED TOTAL ═══════════════════════════════════════════════ -->
+<!-- ══ TOTAL ════════════════════════════════════════════════════════ -->
 <div class="content-card p-4">
     <div class="d-flex justify-content-between align-items-center">
         <div>
@@ -292,7 +281,7 @@
                 Total Product Cost
             </div>
             <div class="text-muted" style="font-size:0.8rem;">
-                Standard BOM + Dimensions
+                Standard BOM only · Dimensions are for reference
             </div>
         </div>
         <div style="font-size:1.5rem; font-weight:700; color:#1a1f3a;">

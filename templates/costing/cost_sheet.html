@@ -154,12 +154,18 @@
 {% endif %}
 
 
-<!-- ── Dimensions Breakdown ─────────────────────────────────────── -->
+<!-- ── Dimensions (reference only) ─────────────────────────────── -->
 {% if wood_by_category %}
 <div class="content-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-rulers me-2 text-info"></i>
-        Dimensions
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-rulers me-2 text-info"></i>
+            Dimensions
+            <span class="text-muted ms-2"
+                  style="font-size:0.78rem; font-weight:400;">
+                Reference only — costs captured in Standard BOM
+            </span>
+        </span>
     </div>
 
     {% for category, parts in wood_by_category.items %}
@@ -173,66 +179,72 @@
         <thead>
             <tr style="background:#fafafa;">
                 <th class="ps-4">Part Name</th>
-                <th class="text-end">W</th>
-                <th class="text-end">B</th>
-                <th class="text-end">L</th>
+                <th class="text-end">Width</th>
+                <th class="text-end">Breadth</th>
+                <th class="text-end">Height</th>
+                <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
-                <th class="text-end">Qty</th>
-                <th class="text-end">Rate (₹)</th>
-                <th class="text-end pe-4">Cost (₹)</th>
+                <th class="text-end pe-4">Calc Qty</th>
             </tr>
         </thead>
         <tbody>
             {% for part in parts %}
             <tr>
-                <td class="ps-4">{{ part.part_name }}</td>
-                <td class="text-end text-muted">
+                <td class="ps-4">
+                    {{ part.part_name }}
+                    <span class="text-muted ms-1"
+                          style="font-size:0.75rem;">
+                        ({{ part.resource.resource_name }})
+                    </span>
+                </td>
+                <td class="text-end text-muted" style="font-size:0.82rem;">
                     {{ part.width|floatformat:2 }}
+                    <span style="font-size:0.72rem;">
+                        {{ part.width_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted">
+                <td class="text-end text-muted" style="font-size:0.82rem;">
                     {{ part.breadth|floatformat:2 }}
+                    <span style="font-size:0.72rem;">
+                        {{ part.breadth_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted">
+                <td class="text-end text-muted" style="font-size:0.82rem;">
+                    {% if part.height %}
+                        {{ part.height|floatformat:2 }}
+                        <span style="font-size:0.72rem;">
+                            {{ part.height_unit }}
+                        </span>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td class="text-end text-muted" style="font-size:0.82rem;">
                     {{ part.length|floatformat:2 }}
+                    <span style="font-size:0.72rem;">
+                        {{ part.length_unit }}
+                    </span>
                 </td>
-                <td class="text-end text-muted">
+                <td class="text-end text-muted" style="font-size:0.82rem;">
                     {{ part.pieces }}
                 </td>
-                <td class="text-end">
+                <td class="text-end pe-4" style="font-size:0.82rem;">
                     {{ part.calculated_quantity|floatformat:4 }}
-                </td>
-                <td class="text-end text-muted">
-                    {{ part.rate|floatformat:2 }}
-                </td>
-                <td class="text-end pe-4 fw-semibold">
-                    {{ part.cost|floatformat:2 }}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
-        <tfoot>
-            <tr style="background:#f8f9fa;">
-                <td colspan="7"
-                    class="ps-4 text-end fw-semibold"
-                    style="font-size:0.8rem; color:#6c757d;">
-                    {{ category }} subtotal
-                </td>
-                <td class="text-end pe-4 fw-bold">
-                    ₹{{ wood_category_totals|get_item:category|floatformat:2 }}
-                </td>
-            </tr>
-        </tfoot>
     </table>
     <hr class="my-0" style="border-color:#f0f0f0;">
     {% endfor %}
 
-    <div class="d-flex justify-content-between align-items-center
-                px-4 py-3"
-         style="background:#f8f9fa; border-top:2px solid #e9ecef;">
-        <span class="fw-semibold">Dimensions Total</span>
-        <span class="fw-bold"
-              style="font-size:1.1rem; color:#1a1f3a;">
-            ₹{{ total_wood_cost|floatformat:2 }}
+    <!-- Informational note — no total row -->
+    <div class="px-4 py-3"
+         style="background:#f8f9fa; border-top:1px solid #e9ecef;">
+        <span style="font-size:0.8rem; color:#6c757d;">
+            <i class="bi bi-info-circle me-1"></i>
+            Dimension costs are included in the Standard BOM above.
+            This section shows physical measurements only.
         </span>
     </div>
 </div>
