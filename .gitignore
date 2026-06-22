@@ -1,8 +1,26 @@
-# Virtual environment
-venv/
-
-# Environment variables
+# Environment
 .env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Database (back up separately, don't commit)
+db.sqlite3
+
+# Static files collected by collectstatic
+staticfiles/
+
+# Media uploads
+media/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Qodo files
 .qodo/
