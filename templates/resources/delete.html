@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-6">
+
+        {% if in_use %}
+        <!-- ── Resource is in use — cannot delete ──────────────── -->
+        <div class="content-card">
+            <div class="card-header"
+                 style="background:#fff8e1; border-bottom:1px solid #ffe082;">
+                <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
+                Cannot Delete — Resource is in Use
+            </div>
+            <div class="card-body p-4">
+
+                <p style="font-size:0.9rem;">
+                    <strong>{{ resource.resource_name }}</strong>
+                    cannot be permanently deleted because it is currently
+                    referenced by:
+                </p>
+
+                <div class="row g-3 mb-4">
+                    {% if bom_count %}
+                    <div class="col-6">
+                        <div class="p-3 text-center"
+                             style="background:#f8f9fa; border-radius:8px;
+                                    border:1px solid #e9ecef;">
+                            <div style="font-size:1.5rem; font-weight:700;
+                                        color:#1a1f3a;">
+                                {{ bom_count }}
+                            </div>
+                            <div class="text-muted" style="font-size:0.8rem;">
+                                BOM item{{ bom_count|pluralize }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if wood_count %}
+                    <div class="col-6">
+                        <div class="p-3 text-center"
+                             style="background:#f8f9fa; border-radius:8px;
+                                    border:1px solid #e9ecef;">
+                            <div style="font-size:1.5rem; font-weight:700;
+                                        color:#1a1f3a;">
+                                {{ wood_count }}
+                            </div>
+                            <div class="text-muted" style="font-size:0.8rem;">
+                                Dimension entr{{ wood_count|pluralize:"y,ies" }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="alert alert-info" style="font-size:0.85rem;">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    <strong>Recommended action:</strong>
+                    Deactivate this resource instead.
+                    It will be hidden from all dropdowns and new BOM entries,
+                    but existing product costs remain intact.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <!-- Offer deactivation as the safe alternative -->
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="deactivate">
+                        <button type="submit"
+                                class="btn btn-warning btn-sm">
+                            <i class="bi bi-eye-slash me-1"></i>
+                            Deactivate Instead
+                        </button>
+                    </form>
+
+                    <a href="{% url 'resources:list' %}"
+                       class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left me-1"></i>
+                        Go Back
+                    </a>
+                </div>
+
+            </div>
+        </div>
+
+        {% else %}
+        <!-- ── Resource is not in use — safe to delete ─────────── -->
+        <div class="content-card">
+            <div class="card-header"
+                 style="background:#fff5f5; border-bottom:1px solid #fecaca;">
+                <i class="bi bi-trash-fill text-danger me-2"></i>
+                Delete Resource
+            </div>
+            <div class="card-body p-4">
+
+                <p style="font-size:0.9rem;">
+                    You are about to permanently delete:
+                </p>
+
+                <div class="p-3 mb-4"
+                     style="background:#f8f9fa; border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-bold" style="color:#1a1f3a;">
+                        {{ resource.resource_name }}
+                    </div>
+                    <div class="text-muted" style="font-size:0.82rem;">
+                        {{ resource.category }} ·
+                        {{ resource.unit }} ·
+                        ₹{{ resource.rate|floatformat:2 }}
+                    </div>
+                </div>
+
+                <div class="alert alert-danger" style="font-size:0.85rem;">
+                    <i class="bi bi-exclamation-circle me-1"></i>
+                    <strong>This cannot be undone.</strong>
+                    This resource is not used in any BOM or dimension entry,
+                    so it is safe to delete permanently.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-danger btn-sm">
+                            <i class="bi bi-trash me-1"></i>
+                            Yes, Delete Permanently
+                        </button>
+                    </form>
+
+                    <a href="{% url 'resources:list' %}"
+                       class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-left me-1"></i>
+                        Cancel
+                    </a>
+                </div>
+
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+
+{% endblock %}
