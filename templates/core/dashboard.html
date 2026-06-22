@@ -7,7 +7,7 @@
 <div class="row g-3 mb-4">
 
     <!-- Products -->
-    <div class="col-12 col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
@@ -22,7 +22,7 @@
     </div>
 
     <!-- Resources -->
-    <div class="col-12 col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
@@ -37,7 +37,7 @@
     </div>
 
     <!-- BOM Items -->
-    <div class="col-12 col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
@@ -51,16 +51,16 @@
         </div>
     </div>
 
-    <!-- Wood Parts -->
-    <div class="col-12 col-sm-6 col-xl-3">
+    <!-- Dimensions -->
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
                     <div class="stat-value">{{ total_wood_parts }}</div>
-                    <div class="stat-label mt-1">Wood / Ply Parts</div>
+                    <div class="stat-label mt-1">Dimension Entries</div>
                 </div>
                 <div class="stat-icon" style="background:#fff7ed;color:#f97316;">
-                    <i class="bi bi-grid-3x3"></i>
+                    <i class="bi bi-rulers"></i>
                 </div>
             </div>
         </div>
@@ -75,14 +75,19 @@
     <div class="col-12 col-lg-6">
         <div class="content-card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-box me-2 text-primary"></i>Recently Added Products</span>
-                <a href="{% url 'products:list' %}" 
-                   class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;">
+                <span>
+                    <i class="bi bi-box me-2 text-primary"></i>
+                    Recently Added Products
+                </span>
+                <a href="{% url 'products:list' %}"
+                   class="btn btn-sm btn-outline-secondary"
+                   style="font-size:0.75rem;">
                     View All
                 </a>
             </div>
             <div class="card-body p-0">
                 {% if recent_products %}
+                <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
@@ -95,12 +100,14 @@
                         {% for product in recent_products %}
                         <tr>
                             <td class="ps-3">
-                                <code style="font-size:0.8rem;">{{ product.product_code }}</code>
+                                <code style="font-size:0.8rem;">
+                                    {{ product.product_code }}
+                                </code>
                             </td>
                             <td>{{ product.product_name }}</td>
                             <td class="pe-3 text-end">
                                 {% if product.active %}
-                                    <span class="badge bg-success-subtle text-success" 
+                                    <span class="badge bg-success-subtle text-success"
                                           style="font-size:0.7rem;">Active</span>
                                 {% else %}
                                     <span class="badge bg-secondary-subtle text-secondary"
@@ -111,11 +118,12 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% else %}
                 <div class="text-center py-4">
                     <i class="bi bi-inbox text-muted" style="font-size:2rem;"></i>
                     <p class="text-muted mt-2 mb-0" style="font-size:0.875rem;">
-                        No products yet. 
+                        No products yet.
                         <a href="{% url 'imports:upload' %}">Import from Excel</a>
                     </p>
                 </div>
@@ -128,14 +136,19 @@
     <div class="col-12 col-lg-6">
         <div class="content-card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-collection me-2 text-success"></i>Recently Updated Resources</span>
+                <span>
+                    <i class="bi bi-collection me-2 text-success"></i>
+                    Recently Updated Resources
+                </span>
                 <a href="{% url 'resources:list' %}"
-                   class="btn btn-sm btn-outline-secondary" style="font-size:0.75rem;">
+                   class="btn btn-sm btn-outline-secondary"
+                   style="font-size:0.75rem;">
                     View All
                 </a>
             </div>
             <div class="card-body p-0">
                 {% if recent_resources %}
+                <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
@@ -164,6 +177,7 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% else %}
                 <div class="text-center py-4">
                     <i class="bi bi-inbox text-muted" style="font-size:2rem;"></i>
