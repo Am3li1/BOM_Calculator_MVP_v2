@@ -1,28 +1,28 @@
 # config/settings.py
 
-import os
 from pathlib import Path
-from decouple import config
+from decouple import config, Csv
 
-# ── Base Directory ───────────────────────────────────────────────
+# ── Base Directory ───────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ── Security ─────────────────────────────────────────────────────
-# SECRET_KEY comes from .env file — never hardcode it
+
+# ── Security ─────────────────────────────────────────────────────────
+# SECRET_KEY comes from environment variable — never hardcoded
 SECRET_KEY = config('SECRET_KEY')
 
-# DEBUG comes from .env — False in production, True in development
+# DEBUG comes from environment variable
+# Locally: DEBUG=True (in .env)
+# On Render: DEBUG=False (set in Render dashboard)
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-# Which hostnames Django will respond to
-# In production: your actual domain name
-# In development: localhost
-ALLOWED_HOSTS = config(
-    'ALLOWED_HOSTS',
-    default='127.0.0.1,localhost'
-).split(',')
+# ALLOWED_HOSTS comes from environment variable
+# Locally: localhost,127.0.0.1
+# On Render: your-app.onrender.com
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 
-# ── Installed Apps ───────────────────────────────────────────────
+
+# ── Application Definition ───────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -41,10 +41,10 @@ INSTALLED_APPS = [
     'apps.imports',
 ]
 
-# ── Middleware ───────────────────────────────────────────────────
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # serves static files
+    # WhiteNoise must be directly after SecurityMiddleware
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -55,7 +55,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'config.urls'
 
-# ── Templates ────────────────────────────────────────────────────
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -74,8 +73,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-# ── Database ─────────────────────────────────────────────────────
-# SQLite for MVP — file stored in project root
+
+# ── Database ──────────────────────────────────────────────────────────
+# SQLite for MVP — file lives in the project root
+# On Render this resets on every deploy (see deployment notes)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -83,7 +84,8 @@ DATABASES = {
     }
 }
 
-# ── Password Validation ──────────────────────────────────────────
+
+# ── Password Validation ───────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -91,46 +93,47 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# ── Internationalisation ─────────────────────────────────────────
+
+# ── Internationalisation ──────────────────────────────────────────────
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE     = 'Asia/Kolkata'
 USE_I18N      = True
 USE_TZ        = True
 
-# ── Static Files ─────────────────────────────────────────────────
-# URL prefix for static files in browser
-STATIC_URL = '/static/'
 
-# Where Django looks for static files during development
-STATICFILES_DIRS = [BASE_DIR / 'static']
-
-# Where collectstatic copies everything for production
-# Nginx serves files from this directory
+# ── Static Files ──────────────────────────────────────────────────────
+# WhiteNoise serves static files in production without Nginx
+STATIC_URL  = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# WhiteNoise compresses and caches static files automatically
+# WhiteNoise compression and caching
 STATICFILES_STORAGE = (
     'whitenoise.storage.CompressedManifestStaticFilesStorage'
 )
 
-# ── Media Files (uploaded Excel files) ──────────────────────────
+# If you have a /static/ folder with your own CSS/JS/images
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+
+
+# ── Media Files ───────────────────────────────────────────────────────
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# ── Auth Redirects ───────────────────────────────────────────────
+
+# ── Authentication ────────────────────────────────────────────────────
 LOGIN_URL          = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'
 
-# ── Security Headers (production only) ──────────────────────────
-if not DEBUG:
-    SECURE_BROWSER_XSS_FILTER       = True
-    SECURE_CONTENT_TYPE_NOSNIFF     = True
-    X_FRAME_OPTIONS                 = 'DENY'
-    SESSION_COOKIE_SECURE           = True
-    CSRF_COOKIE_SECURE              = True
-    SECURE_SSL_REDIRECT             = True
-    SECURE_HSTS_SECONDS             = 3600
-    SECURE_HSTS_INCLUDE_SUBDOMAINS  = True
 
-# ── Default Primary Key ──────────────────────────────────────────
+# ── Default Primary Key ───────────────────────────────────────────────
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ── Messages ──────────────────────────────────────────────────────────
+from django.contrib.messages import constants as messages
+MESSAGE_TAGS = {
+    messages.ERROR: 'danger',
+}

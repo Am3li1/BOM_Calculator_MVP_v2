@@ -1,26 +1,26 @@
-# Environment
+# Environment variables — never commit these
 .env
-venv/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-# Database (back up separately, don't commit)
+# Django
+*.log
+local_settings.py
 db.sqlite3
-
-# Static files collected by collectstatic
-staticfiles/
-
-# Media uploads
 media/
+
+# Virtual environment
+venv/
+env/
+.venv/
 
 # IDE
 .vscode/
 .idea/
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Qodo files
 .qodo/
