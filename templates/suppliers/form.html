@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-6">
+        <div class="content-card">
+            <div class="card-header">
+                <i class="bi bi-truck me-2 text-primary"></i>
+                {{ form_title }}
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Supplier Name
+                        </label>
+                        {{ form.supplier_name }}
+                        {% if form.supplier_name.errors %}
+                        <div class="text-danger"
+                             style="font-size:0.8rem;">
+                            {{ form.supplier_name.errors.0 }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            Phone Number
+                        </label>
+                        {{ form.phone_number }}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">
+                            GST Number
+                        </label>
+                        {{ form.gst_number }}
+                        <div class="form-text">
+                            Optional. Used for billing reference.
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check">
+                            {{ form.active }}
+                            <label class="form-check-label fw-semibold">
+                                Active
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            Inactive suppliers cannot be linked
+                            to new resources.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>
+                            {{ submit_label }}
+                        </button>
+                        <a href="{% url 'suppliers:list' %}"
+                           class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -5,28 +5,24 @@ from .models import Resource
 
 
 class ResourceForm(forms.ModelForm):
-    """
-    ModelForm for creating and editing Resources.
-
-    The category field is built dynamically from the ResourceCategory
-    table rather than hardcoded choices. This means administrators can
-    add, rename, or remove categories through Django Admin without
-    any code changes.
-
-    The view passes a 'categories' queryset to __init__ so the
-    dropdown always reflects the current database state.
-    """
 
     class Meta:
         model = Resource
-        fields = ['resource_name', 'category', 'unit', 'rate', 'active']
+        fields = [
+            'resource_name',
+            'category',
+            'unit',
+            'rate',
+            'active',
+            'manual_override_rate',
+            'override_reason',
+        ]
 
         widgets = {
             'resource_name': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'e.g. Teak Wood, Carpenter',
             }),
-            # category widget is set dynamically in __init__
             'unit': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'e.g. cft, sqft, kg, day, nos',
@@ -39,20 +35,31 @@ class ResourceForm(forms.ModelForm):
             'active': forms.CheckboxInput(attrs={
                 'class': 'form-check-input',
             }),
+            'manual_override_rate': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Leave blank for automatic',
+                'step': '0.01',
+                'min': '0',
+            }),
+            'override_reason': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. Contract rate, Quality premium',
+            }),
         }
 
         labels = {
-            'resource_name': 'Resource Name',
-            'category':      'Category',
-            'unit':          'Unit of Measurement',
-            'rate':          'Rate per Unit (₹)',
-            'active':        'Active',
+            'resource_name':        'Resource Name',
+            'category':             'Category',
+            'unit':                 'Unit of Measurement',
+            'rate':                 'Master Rate per Unit (₹)',
+            'active':               'Active',
+            'manual_override_rate': 'Override Rate',
+            'override_reason':      'Override Reason',
         }
 
         help_texts = {
             'rate': (
-                'Changing this rate will instantly update '
-                'all product costs.'
+                'Fallback rate used when no supplier links exist.'
             ),
             'active': (
                 'Inactive resources are hidden from BOM selection.'
@@ -60,29 +67,13 @@ class ResourceForm(forms.ModelForm):
         }
 
     def __init__(self, *args, categories=None, **kwargs):
-        """
-        Accepts an optional 'categories' queryset from the view.
-
-        Why we do this here instead of in Meta.widgets:
-        Meta.widgets is evaluated once at class definition time —
-        it cannot read from the database dynamically.
-        __init__ runs every time the form is instantiated, so it
-        always gets fresh data from the database.
-        """
         super().__init__(*args, **kwargs)
 
         if categories is not None:
-            # Build (value, label) pairs for the select dropdown.
-            # value and label are both the category name string
-            # because we store the name directly on Resource.category.
             category_choices = [('', '— Select Category —')] + [
                 (cat.name, cat.name) for cat in categories
             ]
         else:
-            # Fallback: if no categories passed, build from
-            # whatever is currently in the Resource table.
-            # This prevents a blank dropdown if the view
-            # forgets to pass categories.
             from .models import ResourceCategory
             fallback = ResourceCategory.objects.filter(
                 active=True
@@ -95,5 +86,8 @@ class ResourceForm(forms.ModelForm):
             choices=category_choices,
             attrs={'class': 'form-select'}
         )
-        # Required so the empty first option triggers validation
         self.fields['category'].required = True
+
+        # Override rate is never required
+        self.fields['manual_override_rate'].required = False
+        self.fields['override_reason'].required = False

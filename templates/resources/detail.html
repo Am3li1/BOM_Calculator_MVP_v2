@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- ── Effective Rate Indicator ──────────────────────────────────── -->
+{% with src=resource.effective_rate_source %}
+<div class="alert mb-4
+    {% if src.source == 'override' %}alert-info
+    {% elif src.source == 'preferred' %}alert-success
+    {% elif src.source == 'lowest' %}alert-warning
+    {% else %}alert-secondary
+    {% endif %}"
+    style="font-size:0.85rem;">
+
+    <div class="d-flex align-items-start gap-2 flex-wrap">
+        <i class="bi bi-lightning-charge-fill mt-1"></i>
+        <div>
+            <strong>Costing engine uses:</strong>
+            ₹{{ src.rate|floatformat:2 }} / {{ resource.unit }}
+
+            {% if src.source == 'override' %}
+                <span class="badge bg-info text-dark ms-2"
+                      style="font-size:0.7rem;">
+                    ✎ Manual Override
+                </span>
+                {% if src.reason %}
+                <span class="text-muted ms-1"
+                      style="font-size:0.78rem;">
+                    — {{ src.reason }}
+                </span>
+                {% endif %}
+                <div class="text-muted mt-1"
+                     style="font-size:0.78rem;">
+                    Supplier rates are ignored while an override is set.
+                    <a href="#override-card">Edit or clear override ↓</a>
+                </div>
+
+            {% elif src.source == 'preferred' %}
+                — from <strong>{{ src.supplier }}</strong>
+                <span class="badge bg-success ms-2"
+                      style="font-size:0.7rem;">
+                    ★ Preferred Supplier
+                </span>
+                {% if resource.lowest_supplier_rate and resource.lowest_supplier_rate < src.rate %}
+                <div class="text-muted mt-1"
+                     style="font-size:0.78rem;">
+                    <i class="bi bi-info-circle me-1"></i>
+                    A cheaper option exists at
+                    ₹{{ resource.lowest_supplier_rate|floatformat:2 }}.
+                    Preferred supplier is used because of business preference.
+                </div>
+                {% endif %}
+
+            {% elif src.source == 'lowest' %}
+                — from <strong>{{ src.supplier }}</strong>
+                <span class="badge bg-warning text-dark ms-2"
+                      style="font-size:0.7rem;">
+                    ↓ Lowest Available Rate
+                </span>
+                <div class="text-muted mt-1"
+                     style="font-size:0.78rem;">
+                    No preferred supplier set. Using cheapest active
+                    supplier. Mark a supplier as
+                    <strong>Preferred</strong> to lock in a choice.
+                </div>
+
+            {% else %}
+                <span class="badge bg-secondary ms-2"
+                      style="font-size:0.7rem;">
+                    Master Rate
+                </span>
+                <div class="text-muted mt-1"
+                     style="font-size:0.78rem;">
+                    No active supplier links. Add suppliers below to
+                    enable automatic rate selection.
+                </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endwith %}
+
+
+<!-- ── Resource Header ───────────────────────────────────────────── -->
+<div class="content-card p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-start
+                flex-wrap gap-3">
+        <div>
+            <div style="font-size:0.75rem; color:#6c757d;
+                        font-weight:600; text-transform:uppercase;
+                        letter-spacing:0.5px;">
+                Resource
+            </div>
+            <h4 class="mb-1 fw-bold" style="color:#1a1f3a;">
+                {{ resource.resource_name }}
+            </h4>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <span class="badge bg-light text-dark border"
+                      style="font-size:0.75rem;">
+                    {{ resource.category }}
+                </span>
+                <code style="font-size:0.82rem;">
+                    {{ resource.unit }}
+                </code>
+                <span class="text-muted" style="font-size:0.82rem;">
+                    Master rate: ₹{{ resource.rate|floatformat:2 }}
+                </span>
+                {% if resource.active %}
+                <span class="badge bg-success-subtle text-success"
+                      style="font-size:0.7rem;">Active</span>
+                {% else %}
+                <span class="badge bg-secondary-subtle text-secondary"
+                      style="font-size:0.7rem;">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'resources:edit' resource.pk %}"
+               class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-pencil me-1"></i>Edit
+            </a>
+            <a href="{% url 'resources:list' %}"
+               class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrow-left me-1"></i>Back
+            </a>
+        </div>
+    </div>
+</div>
+
+
+<!-- ── Linked Suppliers ──────────────────────────────────────────── -->
+<div class="content-card mb-4">
+    <div class="card-header d-flex justify-content-between
+                align-items-center">
+        <span>
+            <i class="bi bi-truck me-2 text-primary"></i>
+            Suppliers
+            <span class="badge bg-light text-dark border ms-1"
+                  style="font-size:0.75rem;">
+                {{ linked_suppliers.count }}
+            </span>
+        </span>
+    </div>
+
+    {% if linked_suppliers %}
+    <div class="table-responsive">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4">Supplier</th>
+                <th>Phone</th>
+                <th class="text-end">
+                    Their Rate (₹/{{ resource.unit }})
+                </th>
+                <th class="text-center">Preferred</th>
+                <th class="text-center">Status</th>
+                <th class="text-end pe-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for link in linked_suppliers %}
+            <tr {% if link.preferred %}
+                    style="background:#f0fff4;"
+                {% elif not link.active %}
+                    style="opacity:0.55;"
+                {% endif %}>
+
+                <td class="ps-4">
+                    <div class="fw-semibold"
+                         style="font-size:0.875rem;">
+                        {{ link.supplier.supplier_name }}
+                    </div>
+                    {% if link.supplier.gst_number %}
+                    <div class="text-muted"
+                         style="font-size:0.72rem;">
+                        GST: {{ link.supplier.gst_number }}
+                    </div>
+                    {% endif %}
+                    {% if link == cheapest_link and linked_suppliers.count > 1 %}
+                    <span class="badge bg-warning text-dark"
+                          style="font-size:0.65rem;">
+                        ↓ Lowest
+                    </span>
+                    {% endif %}
+                </td>
+
+                <td style="font-size:0.85rem;">
+                    {% if link.supplier.phone_number %}
+                        <i class="bi bi-telephone me-1 text-muted"></i>
+                        {{ link.supplier.phone_number }}
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- Inline rate edit -->
+                <td class="text-end">
+                    <form method="post"
+                          action="{% url 'resources:update_supplier_rate' resource_pk=resource.pk supplier_pk=link.supplier.pk %}"
+                          class="d-inline-flex align-items-center
+                                 gap-1 justify-content-end">
+                        {% csrf_token %}
+                        <span style="font-size:0.8rem;
+                                     color:#6c757d;">₹</span>
+                        <input type="number"
+                               name="supplier_rate"
+                               value="{{ link.supplier_rate }}"
+                               step="0.01" min="0"
+                               style="width:90px; text-align:right;"
+                               class="form-control form-control-sm">
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-primary"
+                                title="Update rate">
+                            <i class="bi bi-check"></i>
+                        </button>
+                    </form>
+                </td>
+
+                <!-- Preferred toggle -->
+                <td class="text-center">
+                    {% if link.preferred %}
+                        <i class="bi bi-star-fill text-success"
+                           title="Preferred supplier"
+                           style="font-size:1.1rem;"></i>
+                    {% elif link.active %}
+                        <form method="post"
+                              action="{% url 'resources:set_preferred' resource_pk=resource.pk supplier_pk=link.supplier.pk %}">
+                            {% csrf_token %}
+                            <button type="submit"
+                                    class="btn btn-sm
+                                           btn-outline-secondary"
+                                    style="font-size:0.72rem;"
+                                    title="Set as preferred">
+                                <i class="bi bi-star me-1"></i>
+                                Set Preferred
+                            </button>
+                        </form>
+                    {% else %}
+                        <span class="text-muted"
+                              style="font-size:0.75rem;">—</span>
+                    {% endif %}
+                </td>
+
+                <!-- Active status -->
+                <td class="text-center">
+                    {% if link.active %}
+                    <span class="badge bg-success-subtle text-success"
+                          style="font-size:0.7rem;">Active</span>
+                    {% else %}
+                    <span class="badge bg-secondary-subtle
+                                 text-secondary"
+                          style="font-size:0.7rem;">Inactive</span>
+                    {% endif %}
+                </td>
+
+                <!-- Remove -->
+                <td class="text-end pe-4">
+                    <form method="post"
+                          action="{% url 'resources:unlink_supplier' resource_pk=resource.pk supplier_pk=link.supplier.pk %}"
+                          onsubmit="return confirm('Remove {{ link.supplier.supplier_name }}?')">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+
+    <!-- Price comparison bar -->
+    {% if linked_suppliers.count > 1 %}
+    <div class="px-4 py-3"
+         style="background:#f8f9fa;
+                border-top:1px solid #f0f0f0;
+                font-size:0.8rem; color:#6c757d;">
+        <i class="bi bi-bar-chart me-1"></i>
+        Lowest available:
+        <strong class="text-success">
+            ₹{{ cheapest_rate|floatformat:2 }}
+        </strong>
+        ({{ cheapest_supplier }})
+        &nbsp;·&nbsp;
+        Highest:
+        <strong>₹{{ highest_rate|floatformat:2 }}</strong>
+        &nbsp;·&nbsp;
+        Potential saving per unit:
+        <strong class="text-success">
+            ₹{{ rate_saving|floatformat:2 }}
+        </strong>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="text-center py-4">
+        <i class="bi bi-truck text-muted"
+           style="font-size:2.5rem;opacity:0.4;"></i>
+        <p class="text-muted mt-2 mb-0"
+           style="font-size:0.875rem;">
+            No suppliers linked yet.
+            Costing uses the master rate.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- ── Link a Supplier ───────────────────────────────────────────── -->
+<div class="content-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-plus-circle me-2 text-success"></i>
+        Link a Supplier
+    </div>
+    <div class="card-body p-4">
+        {% if available_suppliers %}
+        <form method="post"
+              action="{% url 'resources:link_supplier' resource_pk=resource.pk %}">
+            {% csrf_token %}
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-5">
+                    <label class="form-label fw-semibold">
+                        Supplier
+                    </label>
+                    <select name="supplier_id"
+                            class="form-select" required>
+                        <option value="">— Select supplier —</option>
+                        {% for supplier in available_suppliers %}
+                        <option value="{{ supplier.pk }}">
+                            {{ supplier.supplier_name }}
+                            {% if supplier.phone_number %}
+                                · {{ supplier.phone_number }}
+                            {% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label fw-semibold">
+                        Their Rate
+                        (₹/{{ resource.unit }})
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text">₹</span>
+                        <input type="number"
+                               name="supplier_rate"
+                               class="form-control"
+                               placeholder="0.00"
+                               step="0.01" min="0"
+                               required>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <button type="submit"
+                            class="btn btn-success btn-sm">
+                        <i class="bi bi-link-45deg me-1"></i>
+                        Link Supplier
+                    </button>
+                </div>
+            </div>
+            <div class="form-text mt-2">
+                First supplier linked is automatically set as preferred.
+                <a href="{% url 'suppliers:create' %}">
+                    Add a new supplier
+                </a>
+            </div>
+        </form>
+        {% else %}
+        <div class="text-center py-3">
+            <p class="text-muted mb-2" style="font-size:0.875rem;">
+                All active suppliers are already linked.
+            </p>
+            <a href="{% url 'suppliers:create' %}"
+               class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i>
+                Add New Supplier
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- ── Manual Override Rate ──────────────────────────────────────── -->
+<div class="content-card" id="override-card">
+    <div class="card-header">
+        <i class="bi bi-pencil-square me-2 text-info"></i>
+        Manual Rate Override
+    </div>
+    <div class="card-body p-4">
+
+        <div class="alert alert-light border mb-4"
+             style="font-size:0.82rem;">
+            <i class="bi bi-info-circle me-1 text-info"></i>
+            Use this when you want to fix the costing rate regardless
+            of supplier pricing. For example: a negotiated contract
+            rate, a preferred supplier with special terms, or a
+            temporary procurement decision.
+            <br>
+            <strong>Leave blank to use automatic supplier pricing.</strong>
+        </div>
+
+        <form method="post"
+              action="{% url 'resources:set_override' pk=resource.pk %}">
+            {% csrf_token %}
+
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-semibold">
+                        Override Rate
+                        (₹/{{ resource.unit }})
+                    </label>
+                    <div class="input-group">
+                        <span class="input-group-text">₹</span>
+                        <input type="number"
+                               name="manual_override_rate"
+                               class="form-control"
+                               placeholder="Leave blank to clear"
+                               step="0.01" min="0"
+                               value="{{ resource.manual_override_rate|default:'' }}">
+                    </div>
+                    <div class="form-text">
+                        Clear this field to revert to automatic
+                        supplier rate selection.
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-5">
+                    <label class="form-label fw-semibold">
+                        Reason
+                        <span class="text-muted fw-normal">(optional)</span>
+                    </label>
+                    <input type="text"
+                           name="override_reason"
+                           class="form-control"
+                           placeholder="e.g. Contract rate, Quality premium"
+                           value="{{ resource.override_reason }}">
+                </div>
+
+                <div class="col-auto">
+                    <button type="submit"
+                            class="btn btn-info btn-sm text-white">
+                        <i class="bi bi-check-lg me-1"></i>
+                        Save Override
+                    </button>
+                </div>
+            </div>
+
+            {% if resource.manual_override_rate %}
+            <div class="mt-3 p-3"
+                 style="background:#e8f4fd; border-radius:8px;
+                        font-size:0.82rem;">
+                <i class="bi bi-exclamation-circle-fill
+                           text-info me-1"></i>
+                <strong>Override is active:</strong>
+                ₹{{ resource.manual_override_rate|floatformat:2 }}
+                is being used for all costing calculations.
+                Supplier rates are currently ignored.
+                {% if resource.override_reason %}
+                    Reason: {{ resource.override_reason }}.
+                {% endif %}
+                Submit with a blank rate field to clear this override.
+            </div>
+            {% endif %}
+
+        </form>
+    </div>
+</div>
+
+{% endblock %}

@@ -312,6 +312,12 @@
                 <i class="bi bi-collection"></i> Resources
             </a>
         </li>
+        <li class="nav-item">
+            <a href="{% url 'suppliers:list' %}"
+               class="nav-link {% if 'suppliers' in request.resolver_match.namespace %}active{% endif %}">
+                <i class="bi bi-truck"></i> Suppliers
+            </a>
+        </li>
 
         <li><span class="nav-label">Costing</span></li>
         <li class="nav-item">

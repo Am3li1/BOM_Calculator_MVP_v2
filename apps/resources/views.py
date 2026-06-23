@@ -7,6 +7,7 @@ from django.db.models import Q
 
 from .models import Resource, ResourceCategory
 from .forms import ResourceForm
+from decimal import Decimal
 
 
 @login_required
@@ -222,3 +223,99 @@ def resource_delete(request, pk):
         'in_use':     in_use,
     }
     return render(request, 'resources/delete.html', context)
+
+@login_required
+def resource_detail(request, pk):
+    from apps.suppliers.models import Supplier, ResourceSupplier
+    from decimal import Decimal
+
+    resource = get_object_or_404(Resource, pk=pk)
+
+    linked_suppliers = ResourceSupplier.objects.filter(
+        resource=resource
+    ).select_related('supplier').order_by('-preferred', 'supplier_rate')
+
+    linked_supplier_ids = linked_suppliers.values_list(
+        'supplier_id', flat=True
+    )
+    available_suppliers = Supplier.objects.filter(
+        active=True
+    ).exclude(id__in=linked_supplier_ids)
+
+    # Price comparison data
+    active_links      = linked_suppliers.filter(active=True)
+    cheapest_rate     = Decimal('0')
+    highest_rate      = Decimal('0')
+    rate_saving       = Decimal('0')
+    cheapest_supplier = ''
+    cheapest_link     = None
+
+    if active_links.count() > 1:
+        cheapest_link     = active_links.order_by('supplier_rate').first()
+        most_expensive    = active_links.order_by('-supplier_rate').first()
+        cheapest_rate     = cheapest_link.supplier_rate
+        highest_rate      = most_expensive.supplier_rate
+        rate_saving       = highest_rate - cheapest_rate
+        cheapest_supplier = cheapest_link.supplier.supplier_name
+
+    context = {
+        'page_title':          resource.resource_name,
+        'resource':            resource,
+        'linked_suppliers':    linked_suppliers,
+        'available_suppliers': available_suppliers,
+        'cheapest_rate':       cheapest_rate,
+        'highest_rate':        highest_rate,
+        'rate_saving':         rate_saving,
+        'cheapest_supplier':   cheapest_supplier,
+        'cheapest_link':       cheapest_link,
+    }
+    return render(request, 'resources/detail.html', context)
+
+@login_required
+def resource_set_override(request, pk):
+    """
+    Sets or clears the manual override rate on a resource.
+
+    POST with a rate value → sets the override
+    POST with blank rate   → clears the override
+                             (reverts to automatic supplier pricing)
+    """
+    resource = get_object_or_404(Resource, pk=pk)
+
+    if request.method == 'POST':
+        override_rate   = request.POST.get('manual_override_rate', '').strip()
+        override_reason = request.POST.get('override_reason', '').strip()
+
+        if override_rate == '':
+            # User cleared the field — revert to automatic pricing
+            resource.manual_override_rate = None
+            resource.override_reason      = ''
+            resource.save()
+            messages.success(
+                request,
+                f'Override removed for "{resource.resource_name}". '
+                f'Rate will now be determined automatically from '
+                f'supplier pricing.'
+            )
+        else:
+            try:
+                rate = Decimal(override_rate)
+                if rate < 0:
+                    raise ValueError()
+                resource.manual_override_rate = rate
+                resource.override_reason      = override_reason
+                resource.save()
+                messages.success(
+                    request,
+                    f'Override rate ₹{rate} set for '
+                    f'"{resource.resource_name}". '
+                    f'All costing will use this rate.'
+                )
+            except (ValueError, Exception):
+                messages.error(
+                    request,
+                    'Invalid rate. Please enter a positive number '
+                    'or leave blank to clear the override.'
+                )
+
+    return redirect('resources:detail', pk=pk)

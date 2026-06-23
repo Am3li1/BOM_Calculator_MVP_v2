@@ -3,9 +3,8 @@
 
 {% block content %}
 
-<!-- Back button -->
 <div class="mb-3">
-    <a href="{% url 'resources:list' %}" 
+    <a href="{% url 'resources:list' %}"
        class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>Back to Resources
     </a>
@@ -15,9 +14,9 @@
     <div class="col-12 col-lg-7">
         <div class="content-card">
 
-            <!-- Card Header -->
             <div class="card-header">
-                <i class="bi bi-collection me-2 text-primary"></i>{{ form_title }}
+                <i class="bi bi-collection me-2 text-primary"></i>
+                {{ form_title }}
             </div>
 
             <div class="card-body p-4">
@@ -26,50 +25,59 @@
 
                     <!-- Resource Name -->
                     <div class="mb-3">
-                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                        <label class="form-label fw-semibold"
+                               style="font-size:0.875rem;">
                             {{ form.resource_name.label }}
                             <span class="text-danger">*</span>
                         </label>
                         {{ form.resource_name }}
                         {% if form.resource_name.errors %}
-                            <div class="text-danger mt-1" style="font-size:0.8rem;">
-                                {{ form.resource_name.errors.0 }}
-                            </div>
+                        <div class="text-danger mt-1"
+                             style="font-size:0.8rem;">
+                            {{ form.resource_name.errors.0 }}
+                        </div>
                         {% endif %}
                     </div>
 
-                    <!-- Row: Category + Unit -->
+                    <!-- Category + Unit -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-500" style="font-size:0.875rem;">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
                                 {{ form.category.label }}
                                 <span class="text-danger">*</span>
                             </label>
                             {{ form.category }}
                             {% if form.category.errors %}
-                                <div class="text-danger mt-1" style="font-size:0.8rem;">
-                                    {{ form.category.errors.0 }}
-                                </div>
+                            <div class="text-danger mt-1"
+                                 style="font-size:0.8rem;">
+                                {{ form.category.errors.0 }}
+                            </div>
                             {% endif %}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-500" style="font-size:0.875rem;">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
                                 {{ form.unit.label }}
                                 <span class="text-danger">*</span>
                             </label>
                             {{ form.unit }}
                             {% if form.unit.errors %}
-                                <div class="text-danger mt-1" style="font-size:0.8rem;">
-                                    {{ form.unit.errors.0 }}
-                                </div>
+                            <div class="text-danger mt-1"
+                                 style="font-size:0.8rem;">
+                                {{ form.unit.errors.0 }}
+                            </div>
                             {% endif %}
-                            <div class="form-text">e.g. SFT, CFT, NOS, KG, RFT, MTR</div>
+                            <div class="form-text">
+                                e.g. cft, sqft, kg, day, nos
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Rate -->
+                    <!-- Master Rate -->
                     <div class="mb-3">
-                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                        <label class="form-label fw-semibold"
+                               style="font-size:0.875rem;">
                             {{ form.rate.label }}
                             <span class="text-danger">*</span>
                         </label>
@@ -78,28 +86,119 @@
                             {{ form.rate }}
                         </div>
                         {% if form.rate.errors %}
-                            <div class="text-danger mt-1" style="font-size:0.8rem;">
-                                {{ form.rate.errors.0 }}
-                            </div>
+                        <div class="text-danger mt-1"
+                             style="font-size:0.8rem;">
+                            {{ form.rate.errors.0 }}
+                        </div>
                         {% endif %}
-                        <div class="form-text">{{ form.rate.help_text }}</div>
+                        <div class="form-text">
+                            {{ form.rate.help_text }}
+                        </div>
                     </div>
 
-                    <!-- Active Checkbox -->
+                    <!-- Active -->
                     <div class="mb-4">
                         <div class="form-check">
                             {{ form.active }}
-                            <label class="form-check-label" style="font-size:0.875rem;">
+                            <label class="form-check-label"
+                                   style="font-size:0.875rem;">
                                 {{ form.active.label }}
                             </label>
                         </div>
-                        <div class="form-text">{{ form.active.help_text }}</div>
+                        <div class="form-text">
+                            {{ form.active.help_text }}
+                        </div>
                     </div>
 
-                    <!-- Submit Buttons -->
-                    <div class="d-flex gap-2">
+                    <!-- ── Override Rate (edit only) ────────────── -->
+                    {% if resource %}
+                    <hr class="my-4">
+
+                    <div class="mb-2">
+                        <div style="font-size:0.78rem; font-weight:600;
+                                    color:#6c757d; text-transform:uppercase;
+                                    letter-spacing:0.5px;">
+                            Rate Override
+                        </div>
+                        <div class="text-muted mt-1"
+                             style="font-size:0.8rem;">
+                            Override the automatic supplier rate
+                            for this resource. Leave blank to use
+                            supplier pricing automatically.
+                        </div>
+                    </div>
+
+                    <!-- Show current effective rate source -->
+                    {% with src=resource.effective_rate_source %}
+                    <div class="p-3 mb-3"
+                         style="background:#f8f9fa;
+                                border-radius:8px;
+                                border:1px solid #e9ecef;
+                                font-size:0.82rem;">
+                        <i class="bi bi-lightning-charge-fill
+                                   text-warning me-1"></i>
+                        <strong>Currently costing at:</strong>
+                        ₹{{ src.rate|floatformat:2 }}
+                        {% if src.source == 'override' %}
+                            <span class="badge bg-info text-dark ms-1"
+                                  style="font-size:0.65rem;">
+                                ✎ Override
+                            </span>
+                        {% elif src.source == 'preferred' %}
+                            <span class="text-muted">
+                                — {{ src.supplier }} (Preferred)
+                            </span>
+                        {% elif src.source == 'lowest' %}
+                            <span class="text-muted">
+                                — {{ src.supplier }} (Lowest)
+                            </span>
+                        {% else %}
+                            <span class="text-muted">
+                                (Master Rate)
+                            </span>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
+                                Override Rate
+                                <span class="text-muted fw-normal">
+                                    (optional)
+                                </span>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">₹</span>
+                                {{ form.manual_override_rate }}
+                            </div>
+                            <div class="form-text">
+                                Clear to revert to automatic pricing.
+                            </div>
+                        </div>
+                        <div class="col-md-7">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
+                                Override Reason
+                                <span class="text-muted fw-normal">
+                                    (optional)
+                                </span>
+                            </label>
+                            {{ form.override_reason }}
+                            <div class="form-text">
+                                e.g. Contract rate, Quality premium
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- ── End Override Rate ───────────────────── -->
+
+                    <!-- Submit -->
+                    <div class="d-flex gap-2 mt-4">
                         <button type="submit" class="btn btn-primary">
-                            <i class="bi bi-check-lg me-1"></i>{{ submit_label }}
+                            <i class="bi bi-check-lg me-1"></i>
+                            {{ submit_label }}
                         </button>
                         <a href="{% url 'resources:list' %}"
                            class="btn btn-outline-secondary">

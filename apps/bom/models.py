@@ -57,10 +57,11 @@ class BOMItem(models.Model):
     @property
     def rate(self):
         """
-        Always fetched live from Resource master.
-        Never stored. Never editable by users.
+        Live rate from the resource's effective rate.
+        Uses preferred supplier rate, lowest supplier rate,
+        or resource master rate — in that priority order.
         """
-        return self.resource.rate
+        return self.resource.effective_rate
 
     @property
     def cost(self):
@@ -169,12 +170,15 @@ class WoodPart(models.Model):
         else:
             effective_h = h if h > 0 else Decimal('1')
             return (w * b * effective_h * l * p) / divisor
-    
-        @property
-        def rate(self):
-            """Live rate from Resource master — never stored."""
-            return self.resource.rate
 
+
+    @property
+    def rate(self):
+        """
+        Live rate from the resource's effective rate.
+        """
+        return self.resource.effective_rate
+    
     @property
     def cost(self):
         """Calculated cost — never stored."""

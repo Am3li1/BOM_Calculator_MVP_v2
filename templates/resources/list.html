@@ -127,9 +127,32 @@
                             </code>
                         </td>
 
-                        <!-- Rate -->
-                        <td class="text-end fw-bold" style="font-size:0.875rem;">
-                            ₹{{ resource.rate|floatformat:2 }}
+                        <!-- Rate column — shows effective rate with source badge -->
+                        <td class="text-end">
+                            {% with src=resource.effective_rate_source %}
+                            <div class="fw-bold" style="font-size:0.875rem;">
+                                ₹{{ resource.effective_rate|floatformat:2 }}
+                            </div>
+                            <div style="font-size:0.72rem; margin-top:2px;">
+                                {% if src.source == 'override' %}
+                                <span class="badge bg-info text-dark"
+                                      style="font-size:0.65rem;">
+                                    ✎ Override
+                                </span>
+                                {% elif src.source == 'preferred' %}
+                                <span class="text-muted">
+                                    ★ {{ src.supplier }}
+                                </span>
+                                {% elif src.source == 'lowest' %}
+                                <span class="text-muted">
+                                    ↓ {{ src.supplier }}
+                                    (₹{{ resource.lowest_supplier_rate|floatformat:2 }})
+                                </span>
+                                {% else %}
+                                <span class="text-muted">Master rate</span>
+                                {% endif %}
+                            </div>
+                            {% endwith %}
                         </td>
 
                         <!-- Status Toggle -->
@@ -161,6 +184,12 @@
                                    class="btn btn-sm btn-outline-primary"
                                    style="font-size:0.75rem;padding:3px 10px;">
                                     <i class="bi bi-pencil me-1"></i>Edit
+                                </a>
+                                <a href="{% url 'resources:detail' resource.pk %}"
+                                   class="btn btn-sm btn-outline-secondary"
+                                   style="font-size:0.75rem;padding:3px 10px;"
+                                   title="View suppliers">
+                                    <i class="bi bi-eye me-1"></i>View
                                 </a>
                                 <a href="{% url 'resources:delete' resource.pk %}"
                                    class="btn btn-sm btn-outline-danger"
