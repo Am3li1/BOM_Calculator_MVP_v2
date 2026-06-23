@@ -2,9 +2,123 @@
 
 {% block content %}
 
-<div class="row">
+{% if show_errors and validation %}
+<!-- ══ VALIDATION FAILURE REPORT ══════════════════════════════════ -->
 
-    <!-- ── Upload Form ─────────────────────────────────── -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h5 class="mb-1 fw-bold" style="color:#dc3545;">
+            <i class="bi bi-x-circle-fill me-2"></i>
+            Import Blocked — Validation Failed
+        </h5>
+        <p class="text-muted mb-0" style="font-size:0.85rem;">
+            <strong>{{ filename }}</strong> —
+            {{ validation.error_count }}
+            error{{ validation.error_count|pluralize }} found.
+            Fix all errors before importing.
+        </p>
+    </div>
+    <a href="{% url 'imports:upload' %}"
+       class="btn btn-primary btn-sm">
+        <i class="bi bi-upload me-1"></i>
+        Upload Corrected File
+    </a>
+</div>
+
+<!-- Summary banner -->
+<div class="content-card p-4 mb-4"
+     style="border-left:4px solid #dc3545;">
+    <div class="d-flex align-items-center gap-3">
+        <div style="width:48px;height:48px;background:#fee2e2;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;flex-shrink:0;">
+            <i class="bi bi-shield-x text-danger"></i>
+        </div>
+        <div>
+            <div class="fw-bold" style="color:#dc3545;">
+                No data was imported.
+            </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                The ALL-OR-NOTHING rule is active.
+                {{ validation.error_count }}
+                row{{ validation.error_count|pluralize }} failed
+                validation. Fix every error below, then
+                re-upload the corrected file.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error list grouped by sheet -->
+{% regroup validation.errors by sheet as errors_by_sheet %}
+{% for sheet_group in errors_by_sheet %}
+<div class="content-card mb-3">
+    <div class="card-header d-flex justify-content-between
+                align-items-center"
+         style="background:#fff5f5;">
+        <span>
+            <i class="bi bi-table me-2 text-danger"></i>
+            Sheet: <strong>{{ sheet_group.grouper }}</strong>
+        </span>
+        <span class="badge bg-danger"
+              style="font-size:0.75rem;">
+            {{ sheet_group.list|length }}
+            error{{ sheet_group.list|length|pluralize }}
+        </span>
+    </div>
+    <div class="p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr style="background:#fafafa;">
+                    <th class="ps-4"
+                        style="width:80px;">Row</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for error in sheet_group.list %}
+                <tr>
+                    <td class="ps-4"
+                        style="font-size:0.82rem;
+                               color:#6c757d;">
+                        {{ error.row }}
+                    </td>
+                    <td style="font-size:0.82rem;
+                                color:#dc3545;">
+                        <i class="bi bi-exclamation-circle
+                                   me-1"></i>
+                        {{ error.message }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Instructions -->
+<div class="content-card p-4 mt-4">
+    <div class="fw-semibold mb-2"
+         style="color:#1a1f3a;">
+        How to fix this:
+    </div>
+    <ol style="font-size:0.85rem;
+               color:#344054;
+               margin-bottom:0;
+               padding-left:1.2rem;">
+        <li>Open your Excel workbook.</li>
+        <li>Fix every error listed above.</li>
+        <li>Save the workbook.</li>
+        <li>Upload the corrected file using the button above.</li>
+    </ol>
+</div>
+
+{% else %}
+<!-- ══ NORMAL UPLOAD FORM ══════════════════════════════════════════ -->
+
+<div class="row">
     <div class="col-12 col-lg-7 mb-4">
         <div class="content-card">
             <div class="card-header">
@@ -13,18 +127,17 @@
             </div>
             <div class="card-body p-4">
 
-                <!-- What this does -->
-                <div class="alert alert-info mb-4" style="font-size:0.85rem;">
-                    <i class="bi bi-info-circle me-1"></i>
-                    <strong>This will import:</strong>
-                    Resources, Products, BOM items, and Wood parts
-                    from your Excel workbook into the database.
-                    Existing records will be updated. No data will be deleted.
+                <div class="alert alert-info mb-4"
+                     style="font-size:0.85rem;">
+                    <i class="bi bi-shield-check me-1"></i>
+                    <strong>Strict validation is active.</strong>
+                    Every row is validated before import.
+                    If any row fails, the entire import is rejected.
+                    No partial imports.
                 </div>
 
                 <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
-
                     <div class="mb-4">
                         <label class="form-label fw-semibold">
                             Select Workbook
@@ -35,45 +148,50 @@
                                accept=".xlsx,.xls"
                                required>
                         <div class="form-text">
-                            Accepted formats: .xlsx, .xls — Maximum size: 10MB
+                            .xlsx or .xls — Maximum 10MB
                         </div>
                     </div>
 
-                    <!-- Expected sheets info -->
+                    <!-- Expected sheets -->
                     <div class="mb-4 p-3"
-                         style="background:#f8f9fa; border-radius:8px;
+                         style="background:#f8f9fa;
+                                border-radius:8px;
                                 border:1px solid #e9ecef;">
                         <div class="fw-semibold mb-2"
-                             style="font-size:0.85rem; color:#1a1f3a;">
-                            Expected sheets in workbook:
+                             style="font-size:0.85rem;">
+                            Expected sheets:
                         </div>
                         <div class="row g-2">
                             {% for sheet, desc in sheets_info %}
                             <div class="col-6">
                                 <div style="font-size:0.8rem;">
-                                    <i class="bi bi-table me-1 text-success"></i>
+                                    <i class="bi bi-table me-1
+                                               text-success"></i>
                                     <strong>{{ sheet }}</strong>
-                                    <span class="text-muted">— {{ desc }}</span>
+                                    <span class="text-muted">
+                                        — {{ desc }}
+                                    </span>
                                 </div>
                             </div>
                             {% endfor %}
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit"
+                            class="btn btn-primary">
                         <i class="bi bi-cloud-upload me-1"></i>
-                        Upload and Import
+                        Validate and Import
                     </button>
                 </form>
-
             </div>
         </div>
     </div>
 
-    <!-- ── Recent Import History ──────────────────────── -->
+    <!-- Recent imports -->
     <div class="col-12 col-lg-5 mb-4">
         <div class="content-card">
-            <div class="card-header d-flex justify-content-between">
+            <div class="card-header d-flex
+                        justify-content-between">
                 <span>
                     <i class="bi bi-clock-history me-2"></i>
                     Recent Imports
@@ -81,28 +199,36 @@
                 <a href="{% url 'imports:history' %}"
                    style="font-size:0.8rem;">View all</a>
             </div>
-
             {% if recent_logs %}
             <div class="list-group list-group-flush">
                 {% for log in recent_logs %}
                 <a href="{% url 'imports:result' pk=log.pk %}"
                    class="list-group-item list-group-item-action"
-                   style="font-size:0.82rem; border-color:#f0f0f0;">
-                    <div class="d-flex justify-content-between align-items-start">
+                   style="font-size:0.82rem;
+                          border-color:#f0f0f0;">
+                    <div class="d-flex justify-content-between
+                                align-items-start">
                         <div>
-                            <div class="fw-semibold" style="color:#1a1f3a;">
+                            <div class="fw-semibold"
+                                 style="color:#1a1f3a;">
                                 {{ log.file_name }}
                             </div>
-                            <div class="text-muted" style="font-size:0.75rem;">
+                            <div class="text-muted"
+                                 style="font-size:0.75rem;">
                                 {{ log.created_at|date:"d M Y H:i" }}
                                 · {{ log.uploaded_by.username }}
                             </div>
                         </div>
                         <span class="badge ms-2
-                            {% if log.status == 'success' %}bg-success
-                            {% elif log.status == 'partial' %}bg-warning text-dark
-                            {% elif log.status == 'failed' %}bg-danger
-                            {% else %}bg-secondary{% endif %}"
+                            {% if log.status == 'success' %}
+                                bg-success
+                            {% elif log.status == 'partial' %}
+                                bg-warning text-dark
+                            {% elif log.status == 'failed' %}
+                                bg-danger
+                            {% else %}
+                                bg-secondary
+                            {% endif %}"
                             style="font-size:0.7rem;">
                             {{ log.get_status_display }}
                         </span>
@@ -113,16 +239,17 @@
             {% else %}
             <div class="text-center py-4">
                 <i class="bi bi-inbox text-muted"
-                   style="font-size:2rem; opacity:0.4;"></i>
-                <p class="text-muted mt-2 mb-0" style="font-size:0.85rem;">
+                   style="font-size:2rem;opacity:0.4;"></i>
+                <p class="text-muted mt-2 mb-0"
+                   style="font-size:0.85rem;">
                     No imports yet.
                 </p>
             </div>
             {% endif %}
-
         </div>
     </div>
-
 </div>
+
+{% endif %}
 
 {% endblock %}
