@@ -5,10 +5,19 @@
 <!-- ── Header ───────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Import Result</h5>
+        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">
+            Import Result
+        </h5>
         <p class="text-muted mb-0" style="font-size:0.85rem;">
-            {{ log.file_name }} · {{ log.created_at|date:"d M Y H:i" }}
-            · Uploaded by {{ log.uploaded_by.username }}
+            {{ log.file_name }}
+            · {{ log.created_at|date:"d M Y H:i" }}
+            · {{ log.uploaded_by.username }}
+            {% if log.import_type != 'full' %}
+            · <span class="badge bg-light text-dark border"
+                    style="font-size:0.72rem;">
+                {{ log.import_type|upper }}
+              </span>
+            {% endif %}
         </p>
     </div>
     <div class="d-flex gap-2">
@@ -27,60 +36,88 @@
 <!-- ── Status Banner ─────────────────────────────────────────────── -->
 <div class="content-card p-4 mb-4">
     <div class="d-flex align-items-center gap-3">
+
         {% if log.status == 'success' %}
-            <div style="width:48px; height:48px; background:#d1fae5;
-                        border-radius:12px; display:flex; align-items:center;
-                        justify-content:center; font-size:1.5rem;">
-                <i class="bi bi-check-circle-fill text-success"></i>
+        <div style="width:48px;height:48px;background:#d1fae5;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;">
+            <i class="bi bi-check-circle-fill text-success"></i>
+        </div>
+        <div>
+            <div class="fw-bold" style="color:#1a1f3a;font-size:1rem;">
+                Import Successful
             </div>
-            <div>
-                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
-                    Import Successful
-                </div>
-                <div class="text-muted" style="font-size:0.85rem;">
-                    All records imported without errors.
-                </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                All records imported without errors.
             </div>
+        </div>
+
+        {% elif log.status == 'validation_failed' %}
+        <div style="width:48px;height:48px;background:#fee2e2;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;">
+            <i class="bi bi-shield-x text-danger"></i>
+        </div>
+        <div>
+            <div class="fw-bold"
+                 style="color:#dc3545;font-size:1rem;">
+                Validation Failed — No Data Imported
+            </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                {{ log.validation_error_count }}
+                error{{ log.validation_error_count|pluralize }}
+                found. Fix your Excel file and re-upload.
+            </div>
+        </div>
 
         {% elif log.status == 'partial' %}
-            <div style="width:48px; height:48px; background:#fef3c7;
-                        border-radius:12px; display:flex; align-items:center;
-                        justify-content:center; font-size:1.5rem;">
-                <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+        <div style="width:48px;height:48px;background:#fef3c7;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;">
+            <i class="bi bi-exclamation-triangle-fill
+                       text-warning"></i>
+        </div>
+        <div>
+            <div class="fw-bold"
+                 style="color:#1a1f3a;font-size:1rem;">
+                Partial Import
             </div>
-            <div>
-                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
-                    Partial Import
-                </div>
-                <div class="text-muted" style="font-size:0.85rem;">
-                    Most records imported.
-                    {{ error_count }} row{{ error_count|pluralize }}
-                    had issues.
-                </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                Most records imported.
+                {{ error_count }}
+                row{{ error_count|pluralize }} had issues.
             </div>
+        </div>
 
         {% else %}
-            <div style="width:48px; height:48px; background:#fee2e2;
-                        border-radius:12px; display:flex; align-items:center;
-                        justify-content:center; font-size:1.5rem;">
-                <i class="bi bi-x-circle-fill text-danger"></i>
+        <div style="width:48px;height:48px;background:#fee2e2;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;">
+            <i class="bi bi-x-circle-fill text-danger"></i>
+        </div>
+        <div>
+            <div class="fw-bold"
+                 style="color:#dc3545;font-size:1rem;">
+                Import Failed
             </div>
-            <div>
-                <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
-                    Import Failed
-                </div>
-                <div class="text-muted" style="font-size:0.85rem;">
-                    A critical error prevented the import from completing.
-                </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                A critical error prevented the import.
             </div>
+        </div>
         {% endif %}
+
     </div>
 </div>
 
 
-<!-- ── Import Counts ─────────────────────────────────────────────── -->
+<!-- ── Import Counts (only show on success) ──────────────────────── -->
+{% if log.status == 'success' %}
 <div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-2">
         <div class="stat-card text-center">
             <div class="stat-value">{{ log.resources_imported }}</div>
             <div class="stat-label">
@@ -88,7 +125,7 @@
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-2">
         <div class="stat-card text-center">
             <div class="stat-value">{{ log.products_imported }}</div>
             <div class="stat-label">
@@ -96,7 +133,7 @@
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-2">
         <div class="stat-card text-center">
             <div class="stat-value">{{ log.bom_rows_imported }}</div>
             <div class="stat-label">
@@ -104,7 +141,7 @@
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-2">
         <div class="stat-card text-center">
             <div class="stat-value">{{ log.wood_parts_imported }}</div>
             <div class="stat-label">
@@ -112,28 +149,51 @@
             </div>
         </div>
     </div>
+    <div class="col-6 col-md-2">
+        <div class="stat-card text-center">
+            <div class="stat-value">{{ log.suppliers_imported }}</div>
+            <div class="stat-label">
+                <i class="bi bi-truck me-1"></i>Suppliers
+            </div>
+        </div>
+    </div>
 </div>
+{% endif %}
 
 
-<!-- ── Errors (if any) ───────────────────────────────────────────── -->
-{% if errors %}
+<!-- ── Error / Validation Details ────────────────────────────────── -->
+{% if log.error_log %}
 <div class="content-card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex justify-content-between
+                align-items-center"
+         {% if log.status == 'validation_failed' %}
+         style="background:#fff5f5;"
+         {% endif %}>
         <span>
-            <i class="bi bi-exclamation-triangle me-2 text-warning"></i>
-            {{ error_count }} Row{{ error_count|pluralize }} Skipped
+            {% if log.status == 'validation_failed' %}
+            <i class="bi bi-shield-x me-2 text-danger"></i>
+            Validation Errors
+            ({{ log.validation_error_count }})
+            {% else %}
+            <i class="bi bi-exclamation-triangle me-2
+                       text-warning"></i>
+            Import Errors
+            {% endif %}
         </span>
-        <span class="text-muted" style="font-size:0.8rem;">
-            These rows were not imported. Fix them in your workbook
-            and re-upload to add them.
-        </span>
+        {% if log.status == 'validation_failed' %}
+        <a href="{% url 'imports:upload' %}"
+           class="btn btn-danger btn-sm">
+            <i class="bi bi-upload me-1"></i>
+            Upload Corrected File
+        </a>
+        {% endif %}
     </div>
     <div class="p-4">
-        <div style="background:#fafafa; border-radius:8px;
-                    border:1px solid #f0f0f0; padding:16px;
-                    max-height:400px; overflow-y:auto;">
+        <div style="background:#fafafa;border-radius:8px;
+                    border:1px solid #f0f0f0;padding:16px;
+                    max-height:500px;overflow-y:auto;">
             {% for error in errors %}
-            <div style="font-size:0.8rem; font-family:monospace;
+            <div style="font-size:0.8rem;font-family:monospace;
                         padding:4px 0;
                         border-bottom:1px solid #f5f5f5;
                         color:#dc3545;">
@@ -141,15 +201,28 @@
             </div>
             {% endfor %}
         </div>
+        {% if log.status == 'validation_failed' %}
+        <div class="mt-3 p-3"
+             style="background:#fff8e1;border-radius:8px;
+                    border:1px solid #ffe082;
+                    font-size:0.82rem;">
+            <i class="bi bi-lightbulb me-1 text-warning"></i>
+            <strong>How to fix:</strong>
+            Open your Excel file, correct each error above,
+            save it, and upload again. All errors must be
+            resolved before any data can be imported.
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endif %}
 
 
 <!-- ── Next Steps ────────────────────────────────────────────────── -->
+{% if log.status == 'success' %}
 <div class="content-card p-4">
     <div class="fw-semibold mb-3"
-         style="font-size:0.9rem; color:#1a1f3a;">
+         style="font-size:0.9rem;color:#1a1f3a;">
         What would you like to do next?
     </div>
     <div class="d-flex gap-2 flex-wrap">
@@ -161,6 +234,10 @@
            class="btn btn-outline-primary btn-sm">
             <i class="bi bi-collection me-1"></i> View Resources
         </a>
+        <a href="{% url 'suppliers:list' %}"
+           class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-truck me-1"></i> View Suppliers
+        </a>
         <a href="{% url 'costing:list' %}"
            class="btn btn-outline-primary btn-sm">
             <i class="bi bi-calculator me-1"></i> View Cost Sheets
@@ -171,5 +248,6 @@
         </a>
     </div>
 </div>
+{% endif %}
 
 {% endblock %}

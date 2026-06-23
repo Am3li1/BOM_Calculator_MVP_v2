@@ -6,17 +6,22 @@ from django.contrib.auth.models import User
 
 class ImportLog(models.Model):
     """
-    Tracks every Excel file upload.
-    
-    Why: So users can see what was imported, when, by whom,
-    and whether it succeeded or had errors. Invaluable for debugging.
+    Tracks every upload attempt — including validation failures.
+
+    Status flow:
+        pending          → upload received, processing started
+        validation_failed → file was rejected before any DB writes
+        success          → all records imported cleanly
+        partial          → imported with some warnings
+        failed           → critical error during import
     """
 
     STATUS_CHOICES = [
-        ('pending', 'Pending'),
-        ('success', 'Success'),
-        ('partial', 'Partial Success'),
-        ('failed', 'Failed'),
+        ('pending',            'Pending'),
+        ('validation_failed',  'Validation Failed'),
+        ('success',            'Success'),
+        ('partial',            'Partial Success'),
+        ('failed',             'Failed'),
     ]
 
     uploaded_by = models.ForeignKey(
@@ -31,9 +36,11 @@ class ImportLog(models.Model):
         help_text="Original name of the uploaded Excel file."
     )
 
+    # file_path is optional — we don't store the file permanently
     file_path = models.FileField(
         upload_to='imports/',
-        help_text="Stored copy of the uploaded file."
+        blank=True,
+        help_text="Stored copy of the uploaded file (optional)."
     )
 
     status = models.CharField(
@@ -42,17 +49,28 @@ class ImportLog(models.Model):
         default='pending'
     )
 
-    # Counts of what was imported
-    products_imported = models.IntegerField(default=0)
-    resources_imported = models.IntegerField(default=0)
-    bom_rows_imported = models.IntegerField(default=0)
-    wood_parts_imported = models.IntegerField(default=0)
+    # Import type — 'full' or the sheet_key for individual imports
+    import_type = models.CharField(
+        max_length=50,
+        default='full',
+        help_text="'full' for full workbook, or sheet key for individual."
+    )
 
-    # Any errors or warnings from the import
+    # Counts — all default to 0, only set on success
+    products_imported   = models.IntegerField(default=0)
+    resources_imported  = models.IntegerField(default=0)
+    bom_rows_imported   = models.IntegerField(default=0)
+    wood_parts_imported = models.IntegerField(default=0)
+    suppliers_imported  = models.IntegerField(default=0)
+
+    # Validation and import errors
     error_log = models.TextField(
         blank=True,
-        help_text="Any validation errors or warnings during import."
+        help_text="Validation errors or import warnings."
     )
+
+    # How many validation errors were found (0 means clean)
+    validation_error_count = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -62,4 +80,22 @@ class ImportLog(models.Model):
         verbose_name_plural = "Import Logs"
 
     def __str__(self):
-        return f"{self.file_name} — {self.status} ({self.created_at.strftime('%d %b %Y %H:%M')})"
+        return (
+            f"{self.file_name} — {self.get_status_display()} "
+            f"({self.created_at.strftime('%d %b %Y %H:%M')})"
+        )
+
+    @property
+    def status_colour(self):
+        """Bootstrap colour class for this status."""
+        return {
+            'pending':           'secondary',
+            'validation_failed': 'danger',
+            'success':           'success',
+            'partial':           'warning',
+            'failed':            'danger',
+        }.get(self.status, 'secondary')
+
+    @property
+    def had_validation_errors(self):
+        return self.status == 'validation_failed'

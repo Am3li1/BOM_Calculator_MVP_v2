@@ -122,3 +122,16 @@ class ResourceSupplier(models.Model):
             f" → {self.resource.resource_name}"
             f" @ ₹{self.supplier_rate}{preferred_tag}"
         )
+    
+    @property
+    def supplier_code(self):
+        """
+        Auto-generated supplier code based on database ID.
+        SUP-001, SUP-002, ... SUP-047, etc.
+        No new field or migration needed — derived from pk.
+        """
+        return f'SUP-{self.pk:03d}'
+    
+    @property
+    def resource_count(self):
+        return self.resource_links.filter(active=True).count()

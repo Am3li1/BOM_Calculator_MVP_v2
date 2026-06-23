@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="mb-3">
+    <a href="{% url 'imports:upload' %}"
+       class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>
+        Back to Import
+    </a>
+</div>
+
+{% if show_errors and validation %}
+<!-- ══ VALIDATION FAILURE ══════════════════════════════════════════ -->
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h5 class="mb-1 fw-bold" style="color:#dc3545;">
+            <i class="bi bi-x-circle-fill me-2"></i>
+            {{ label }} Import Blocked
+        </h5>
+        <p class="text-muted mb-0" style="font-size:0.85rem;">
+            <strong>{{ filename }}</strong> —
+            {{ validation.error_count }}
+            error{{ validation.error_count|pluralize }} found.
+        </p>
+    </div>
+    <a href="{% url 'imports:sheet' sheet_key=sheet_key %}"
+       class="btn btn-primary btn-sm">
+        <i class="bi bi-upload me-1"></i>
+        Upload Corrected File
+    </a>
+</div>
+
+<div class="content-card p-4 mb-4"
+     style="border-left:4px solid #dc3545;">
+    <div class="d-flex align-items-center gap-3">
+        <div style="width:48px;height:48px;background:#fee2e2;
+                    border-radius:12px;display:flex;
+                    align-items:center;justify-content:center;
+                    font-size:1.5rem;flex-shrink:0;">
+            <i class="bi bi-shield-x text-danger"></i>
+        </div>
+        <div>
+            <div class="fw-bold" style="color:#dc3545;">
+                No data was imported.
+            </div>
+            <div class="text-muted" style="font-size:0.85rem;">
+                {{ validation.error_count }}
+                error{{ validation.error_count|pluralize }}
+                must be fixed before importing.
+            </div>
+        </div>
+    </div>
+</div>
+
+{% regroup validation.errors by sheet as errors_by_sheet %}
+{% for sheet_group in errors_by_sheet %}
+<div class="content-card mb-3">
+    <div class="card-header"
+         style="background:#fff5f5;">
+        <i class="bi bi-table me-2 text-danger"></i>
+        <strong>{{ sheet_group.grouper }}</strong>
+        <span class="badge bg-danger ms-2"
+              style="font-size:0.72rem;">
+            {{ sheet_group.list|length }}
+            error{{ sheet_group.list|length|pluralize }}
+        </span>
+    </div>
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr style="background:#fafafa;">
+                <th class="ps-4" style="width:80px;">Row</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for error in sheet_group.list %}
+            <tr>
+                <td class="ps-4 text-muted"
+                    style="font-size:0.82rem;">
+                    {{ error.row }}
+                </td>
+                <td style="font-size:0.82rem; color:#dc3545;">
+                    <i class="bi bi-exclamation-circle me-1"></i>
+                    {{ error.message }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+{% else %}
+<!-- ══ UPLOAD FORM ══════════════════════════════════════════════════ -->
+
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-7">
+        <div class="content-card">
+            <div class="card-header">
+                <i class="bi bi-upload me-2 text-primary"></i>
+                Import {{ label }}
+            </div>
+            <div class="card-body p-4">
+
+                <div class="alert alert-info mb-4"
+                     style="font-size:0.85rem;">
+                    <i class="bi bi-shield-check me-1"></i>
+                    <strong>Strict validation active.</strong>
+                    Every row is checked before import.
+                    If any row fails, nothing is imported.
+                </div>
+
+                {% if sheet_key == 'bom' or sheet_key == 'wood' %}
+                <div class="alert alert-warning mb-4"
+                     style="font-size:0.85rem;">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    <strong>Cross-references checked against database.</strong>
+                    All Products and Resources referenced in this
+                    sheet must already exist in the database before
+                    importing.
+                </div>
+                {% endif %}
+
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            Select Excel File
+                        </label>
+                        <input type="file"
+                               name="sheet_file"
+                               class="form-control"
+                               accept=".xlsx,.xls"
+                               required>
+                        <div class="form-text">
+                            The file must contain a sheet named
+                            <strong>{{ entry.sheet }}</strong>.
+                            Maximum 10MB.
+                        </div>
+                    </div>
+
+                    <div class="p-3 mb-4"
+                         style="background:#f8f9fa;
+                                border-radius:8px;
+                                border:1px solid #e9ecef;
+                                font-size:0.82rem;">
+                        <div class="fw-semibold mb-1">
+                            Expected sheet name:
+                        </div>
+                        <code>{{ entry.sheet }}</code>
+                        <div class="mt-2 text-muted">
+                            Your file may contain other sheets —
+                            only <strong>{{ entry.sheet }}</strong>
+                            will be imported.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit"
+                                class="btn btn-primary">
+                            <i class="bi bi-cloud-upload me-1"></i>
+                            Validate and Import
+                        </button>
+                        <a href="{% url 'imports:upload' %}"
+                           class="btn btn-outline-secondary">
+                            Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

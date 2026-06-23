@@ -24,6 +24,7 @@ from django.db import transaction
 from apps.resources.models import Resource
 from apps.products.models import Product
 from apps.bom.models import BOMItem, WoodPart
+from apps.suppliers.models import Supplier
 from apps.imports.models import ImportLog
 
 
@@ -43,7 +44,8 @@ def _read_sheet(path, sheet_name):
     error_string is None on success.
     """
     try:
-        df = pd.read_excel(path, sheet_name=sheet_name)
+        with pd.ExcelFile(path) as xl:
+            df = pd.read_excel(xl, sheet_name=sheet_name)
         df.columns = df.columns.str.strip()
         return df, None
     except Exception as e:
@@ -59,10 +61,19 @@ def _make_product_code(product_name):
 def _err(sheet, row, message):
     """Creates a standardised error dict."""
     return {
-        'sheet': sheet,
-        'row':   row,
+        'sheet':   sheet,
+        'row':     row,
         'message': message,
     }
+
+
+def _sheet_exists(path, sheet_name):
+    """Returns True if the workbook contains the named sheet."""
+    try:
+        with pd.ExcelFile(path) as xl:
+            return sheet_name in xl.sheet_names
+    except Exception:
+        return False
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -76,39 +87,33 @@ def validate_resources(path):
     Validates the Resource sheet.
 
     Checks:
-    - Sheet exists
-    - Required columns present
-    - No empty resource names
-    - No empty categories
-    - No empty units
+    - Sheet exists and required columns present
+    - No empty resource names, categories, or units
     - Rate is numeric and non-negative
     - No duplicate resource names within the file
-    - No duplicate (name, category) combinations within the file
     """
     errors = []
-    sheet = 'Resource'
+    sheet  = 'Resource'
 
     df, read_error = _read_sheet(path, sheet)
     if read_error:
         return [_err(sheet, '—', f'Cannot read sheet: {read_error}')]
 
-    required = ['Resource', 'Category', 'Units', 'Rate']
+    required     = ['Resource', 'Category', 'Units', 'Rate']
     missing_cols = [c for c in required if c not in df.columns]
     if missing_cols:
         return [_err(sheet, '—',
             f'Missing columns: {", ".join(missing_cols)}. '
             f'Found: {", ".join(df.columns.tolist())}')]
 
-    seen_names = {}        # resource_name → first row seen
-    seen_name_cat = {}     # (name, category) → first row seen
+    seen_names = {}
 
     for idx, row in df.iterrows():
         excel_row = idx + 2
-
-        name     = _normalize(row['Resource'])
-        category = _normalize(row['Category'])
-        unit     = _normalize(row['Units'])
-        rate_raw = row['Rate']
+        name      = _normalize(row['Resource'])
+        category  = _normalize(row['Category'])
+        unit      = _normalize(row['Units'])
+        rate_raw  = row['Rate']
 
         # Skip completely blank rows
         if not name and not category and pd.isna(rate_raw):
@@ -117,7 +122,7 @@ def validate_resources(path):
         if not name:
             errors.append(_err(sheet, excel_row,
                 'Resource Name is empty.'))
-            continue   # can't validate further without a name
+            continue
 
         if not category:
             errors.append(_err(sheet, excel_row,
@@ -138,8 +143,7 @@ def validate_resources(path):
                     f'(got {rate_raw}).'))
         except (ValueError, InvalidOperation):
             errors.append(_err(sheet, excel_row,
-                f'"{name}": Rate "{rate_raw}" is not a '
-                f'valid number.'))
+                f'"{name}": Rate "{rate_raw}" is not a valid number.'))
 
         # Duplicate name check within file
         if name in seen_names:
@@ -160,10 +164,13 @@ def validate_products(path):
     - Sheet exists
     - Product names not empty
     - No duplicate product names within the file
-    - Skips known placeholder rows ('Column1', 'Products', 'select')
+    - Skips known placeholder rows
     """
-    errors = []
-    sheet = 'Products'
+    errors      = []
+    sheet       = 'Products'
+    seen_names  = {}
+    seen_codes  = {}
+    SKIP_VALUES = {'column1', 'products', 'select', ''}
 
     try:
         df = pd.read_excel(path, sheet_name=sheet,
@@ -171,20 +178,15 @@ def validate_products(path):
     except Exception as e:
         return [_err(sheet, '—', f'Cannot read sheet: {e}')]
 
-    seen_names  = {}
-    seen_codes  = {}
-    SKIP_VALUES = {'column1', 'products', 'select', ''}
-
     for idx, row in df.iterrows():
         excel_row = idx + 1
-        name = _normalize(row[0])
+        name      = _normalize(row[0])
 
         if name.lower() in SKIP_VALUES:
             continue
 
         code = _make_product_code(name)
 
-        # Duplicate name check within file
         if name.lower() in seen_names:
             errors.append(_err(sheet, excel_row,
                 f'"{name}": Duplicate product name. '
@@ -192,12 +194,10 @@ def validate_products(path):
         else:
             seen_names[name.lower()] = excel_row
 
-        # Duplicate code check within file
         if code in seen_codes:
             errors.append(_err(sheet, excel_row,
                 f'"{name}": Generates duplicate product code '
-                f'"{code}". '
-                f'First seen at row {seen_codes[code]}.'))
+                f'"{code}". First seen at row {seen_codes[code]}.'))
         else:
             seen_codes[code] = excel_row
 
@@ -209,37 +209,31 @@ def validate_bom(path):
     Validates the BOM sheet.
 
     Checks:
-    - Sheet exists + required columns
-    - Product name not empty (after forward-fill)
-    - Resource name not empty
+    - Sheet exists and required columns present
+    - Product and Resource names not empty (after forward-fill)
     - Quantity is numeric and positive
-    - Referenced products exist in Products sheet of same file
-    - Referenced resources exist in Resource sheet of same file
+    - Cross-references Products and Resources from the same file
     """
     errors = []
-    sheet = 'BOM'
+    sheet  = 'BOM'
 
     df, read_error = _read_sheet(path, sheet)
     if read_error:
         return [_err(sheet, '—', f'Cannot read sheet: {read_error}')]
 
     required = ['Product', 'Resource', 'Quantity']
-    missing = [c for c in required if c not in df.columns]
+    missing  = [c for c in required if c not in df.columns]
     if missing:
         return [_err(sheet, '—',
             f'Missing columns: {", ".join(missing)}.')]
 
-    # Forward-fill product column (merged cells in Excel)
     df['Product'] = df['Product'].ffill()
 
-    # Build sets of valid products and resources from the same file
-    # so we can cross-reference without hitting the database yet
     valid_products  = _get_product_names_from_file(path)
     valid_resources = _get_resource_names_from_file(path)
 
     for idx, row in df.iterrows():
-        excel_row = idx + 2
-
+        excel_row     = idx + 2
         product_name  = _normalize(row['Product'])
         resource_name = _normalize(row['Resource'])
         qty_raw       = row['Quantity']
@@ -257,7 +251,6 @@ def validate_bom(path):
                 f'"{product_name}": Resource Name is empty.'))
             continue
 
-        # Validate quantity
         try:
             if pd.isna(qty_raw):
                 raise ValueError('blank')
@@ -265,27 +258,23 @@ def validate_bom(path):
             if qty <= 0:
                 errors.append(_err(sheet, excel_row,
                     f'"{product_name}" / "{resource_name}": '
-                    f'Quantity must be greater than 0 '
-                    f'(got {qty_raw}).'))
+                    f'Quantity must be greater than 0 (got {qty_raw}).'))
         except (ValueError, TypeError):
             errors.append(_err(sheet, excel_row,
                 f'"{product_name}" / "{resource_name}": '
                 f'Quantity "{qty_raw}" is not a valid number.'))
 
-        # Cross-reference checks
         product_code = _make_product_code(product_name)
         if (product_name.lower() not in valid_products
                 and product_code not in valid_products):
             errors.append(_err(sheet, excel_row,
-                f'"{product_name}": Product not found in the '
-                f'Products sheet. Add it to the Products sheet '
-                f'first.'))
+                f'"{product_name}": Not found in the Products sheet. '
+                f'Add it to the Products sheet first.'))
 
         if resource_name.lower() not in valid_resources:
             errors.append(_err(sheet, excel_row,
-                f'"{resource_name}": Resource not found in the '
-                f'Resource sheet. Add it to the Resource sheet '
-                f'first.'))
+                f'"{resource_name}": Not found in the Resource sheet. '
+                f'Add it to the Resource sheet first.'))
 
     return errors
 
@@ -295,22 +284,20 @@ def validate_wood(path):
     Validates the Wood/Ply/MDF (Dimensions) sheet.
 
     Checks:
-    - Sheet exists + required columns
-    - Product name not empty (after forward-fill)
-    - Resource name not empty
-    - Dimensions (Width, Breath, Length) are numeric and positive
-    - Referenced products exist in Products sheet
-    - Referenced resources exist in Resource sheet
+    - Sheet exists and required columns present
+    - Product and Resource names not empty (after forward-fill)
+    - Dimensions are numeric and non-negative
+    - Cross-references Products and Resources from the same file
     """
     errors = []
-    sheet = 'Wood, Ply MDF'
+    sheet  = 'Wood, Ply MDF'
 
     df, read_error = _read_sheet(path, sheet)
     if read_error:
         return [_err(sheet, '—', f'Cannot read sheet: {read_error}')]
 
     required = ['Product', 'Resource', 'Width', 'Breath', 'Length']
-    missing = [c for c in required if c not in df.columns]
+    missing  = [c for c in required if c not in df.columns]
     if missing:
         return [_err(sheet, '—',
             f'Missing columns: {", ".join(missing)}.')]
@@ -321,8 +308,7 @@ def validate_wood(path):
     valid_resources = _get_resource_names_from_file(path)
 
     for idx, row in df.iterrows():
-        excel_row = idx + 2
-
+        excel_row     = idx + 2
         product_name  = _normalize(row['Product'])
         resource_name = _normalize(row['Resource'])
 
@@ -339,7 +325,6 @@ def validate_wood(path):
                 f'"{product_name}": Resource Name is empty.'))
             continue
 
-        # Validate dimensions
         for dim_col in ['Width', 'Breath', 'Length']:
             val = row.get(dim_col)
             try:
@@ -355,7 +340,6 @@ def validate_wood(path):
                     f'"{product_name}" / "{resource_name}": '
                     f'{dim_col} "{val}" is not a valid number.'))
 
-        # Cross-reference checks
         product_code = _make_product_code(product_name)
         if (product_name.lower() not in valid_products
                 and product_code not in valid_products):
@@ -369,16 +353,85 @@ def validate_wood(path):
     return errors
 
 
-# ── Cross-reference helpers ───────────────────────────────────────
+def validate_suppliers(path):
+    """
+    Validates the Suppliers sheet.
+
+    Your file structure:
+        Row 0: 'Table 1' (title — skipped)
+        Row 1: 'Supplier ID | Supplier Name | Supplier Mobile' (header)
+        Row 2+: actual data
+
+    Checks:
+    - Sheet exists
+    - Required columns present (Supplier Name, Supplier Mobile)
+    - Supplier Name not empty
+    - Phone number not empty
+    - No duplicate supplier names within the file
+    """
+    errors = []
+    sheet  = 'Suppliers'
+
+    try:
+        # header=1 means use row index 1 as column names
+        # (skips 'Table 1' title row at index 0)
+        df = pd.read_excel(path, sheet_name=sheet, header=1)
+        df.columns = df.columns.str.strip()
+    except Exception as e:
+        return [_err(sheet, '—', f'Cannot read sheet: {e}')]
+
+    required = ['Supplier Name', 'Supplier Mobile']
+    missing  = [c for c in required if c not in df.columns]
+    if missing:
+        return [_err(sheet, '—',
+            f'Missing columns: {", ".join(missing)}. '
+            f'Found: {", ".join(df.columns.tolist())}')]
+
+    seen_names = {}
+
+    for idx, row in df.iterrows():
+        # header is at Excel row 2, data starts at row 3
+        # pandas idx 0 = Excel row 3
+        excel_row = idx + 3
+
+        name  = _normalize(row.get('Supplier Name', ''))
+        phone = _normalize(str(row.get('Supplier Mobile', '')))
+
+        # Skip completely blank rows
+        if not name and (not phone or phone == 'nan'):
+            continue
+
+        if not name:
+            errors.append(_err(sheet, excel_row,
+                'Supplier Name is empty.'))
+            continue
+
+        if not phone or phone == 'nan':
+            errors.append(_err(sheet, excel_row,
+                f'"{name}": Phone number is empty.'))
+
+        # Duplicate name check within file
+        name_lower = name.lower()
+        if name_lower in seen_names:
+            errors.append(_err(sheet, excel_row,
+                f'"{name}": Duplicate supplier name. '
+                f'First seen at row {seen_names[name_lower]}.'))
+        else:
+            seen_names[name_lower] = excel_row
+
+    return errors
+
+
+# ── Cross-reference helpers ───────────────────────────────────────────
 
 def _get_product_names_from_file(path):
     """
-    Returns a set of lowercase product names from the Products sheet.
-    Used for cross-referencing in BOM and Wood validators.
+    Returns a set of product names/codes from the Products sheet.
+    Used by BOM and Wood validators for cross-referencing.
     """
     try:
-        df = pd.read_excel(path, sheet_name='Products',
-                           header=None, usecols=[0])
+        df   = pd.read_excel(path, sheet_name='Products',
+                             header=None, usecols=[0])
         SKIP = {'column1', 'products', 'select', ''}
         names = set()
         for _, row in df.iterrows():
@@ -409,12 +462,13 @@ def _get_resource_names_from_file(path):
         return set()
 
 
-# ── Master validator ──────────────────────────────────────────────
+# ── Master validator ──────────────────────────────────────────────────
 
 def validate_workbook(path):
     """
     Runs all sheet validators.
-    Returns a dict:
+    Only validates sheets that actually exist in the workbook.
+    Returns:
         {
             'valid': bool,
             'errors': [list of error dicts],
@@ -422,20 +476,23 @@ def validate_workbook(path):
             'sheets_checked': [list of sheet names],
         }
     """
-    all_errors = []
+    all_errors     = []
     sheets_checked = []
 
+    # Core sheets — always validated if present
     validators = [
-        ('Resource',     validate_resources),
-        ('Products',     validate_products),
-        ('BOM',          validate_bom),
+        ('Resource',      validate_resources),
+        ('Products',      validate_products),
+        ('BOM',           validate_bom),
         ('Wood, Ply MDF', validate_wood),
+        ('Suppliers',     validate_suppliers),
     ]
 
     for sheet_name, validator_fn in validators:
-        sheets_checked.append(sheet_name)
-        sheet_errors = validator_fn(path)
-        all_errors.extend(sheet_errors)
+        if _sheet_exists(path, sheet_name):
+            sheets_checked.append(sheet_name)
+            sheet_errors = validator_fn(path)
+            all_errors.extend(sheet_errors)
 
     return {
         'valid':          len(all_errors) == 0,
@@ -447,14 +504,17 @@ def validate_workbook(path):
 
 # ════════════════════════════════════════════════════════════════════
 # PHASE 2 — IMPORTERS
-# Importers only run when validate_workbook() returns valid=True.
-# Each importer assumes the data is already validated.
+# Only run after validate_workbook() returns valid=True.
+# Each importer assumes data is already validated.
 # ════════════════════════════════════════════════════════════════════
 
 def import_resources(path):
     result = {'imported': 0, 'updated': 0, 'errors': []}
 
-    df, _ = _read_sheet(path, 'Resource')
+    df, read_error = _read_sheet(path, 'Resource')
+    if read_error or df is None:
+        return result
+
     df = df.rename(columns={
         'Resource': 'resource_name',
         'Category': 'category',
@@ -483,8 +543,8 @@ def import_resources(path):
         if created:
             result['imported'] += 1
         else:
-            resource.unit = unit
-            resource.rate = rate
+            resource.unit   = unit
+            resource.rate   = rate
             resource.active = True
             resource.save()
             result['updated'] += 1
@@ -508,13 +568,13 @@ def import_products(path):
         if name.lower() in SKIP:
             continue
 
-        code = _make_product_code(name)
-
+        code     = _make_product_code(name)
         existing = Product.objects.filter(product_code=code).first()
+
         if existing:
             if existing.is_deleted:
-                existing.is_deleted = False
-                existing.active = True
+                existing.is_deleted   = False
+                existing.active       = True
                 existing.product_name = name
                 existing.save()
             result['updated'] += 1
@@ -532,7 +592,10 @@ def import_products(path):
 def import_bom(path):
     result = {'imported': 0, 'skipped': 0, 'errors': []}
 
-    df, _ = _read_sheet(path, 'BOM')
+    df, read_error = _read_sheet(path, 'BOM')
+    if read_error or df is None:
+        return result
+
     df['Product'] = df['Product'].ffill()
 
     for _, row in df.iterrows():
@@ -550,8 +613,8 @@ def import_bom(path):
         except (ValueError, TypeError):
             continue
 
-        code    = _make_product_code(product_name)
-        product = Product.objects.filter(
+        code     = _make_product_code(product_name)
+        product  = Product.objects.filter(
             product_code=code, is_deleted=False
         ).first()
         resource = Resource.objects.filter(
@@ -579,7 +642,10 @@ def import_bom(path):
 def import_wood(path):
     result = {'imported': 0, 'skipped': 0, 'errors': []}
 
-    df, _ = _read_sheet(path, 'Wood, Ply MDF')
+    df, read_error = _read_sheet(path, 'Wood, Ply MDF')
+    if read_error or df is None:
+        return result
+
     df['Product'] = df['Product'].ffill()
 
     for _, row in df.iterrows():
@@ -623,32 +689,77 @@ def import_wood(path):
     return result
 
 
-# ── Master import orchestrator ────────────────────────────────────
-
-def import_workbook(path, file_obj, uploaded_by):
+def import_suppliers(path):
     """
-    Runs all importers inside a single atomic transaction.
+    Imports the Suppliers sheet.
+    Uses get_or_create on supplier_name to avoid duplicates.
+    Updates phone number if supplier already exists.
+    """
+    result = {'imported': 0, 'updated': 0, 'errors': []}
+
+    try:
+        # Skip row 0 (title 'Table 1'), use row 1 as header
+        df = pd.read_excel(path, sheet_name='Suppliers', header=1)
+        df.columns = df.columns.str.strip()
+    except Exception as e:
+        result['errors'].append(str(e))
+        return result
+
+    for _, row in df.iterrows():
+        name  = _normalize(row.get('Supplier Name', ''))
+        phone = _normalize(str(row.get('Supplier Mobile', '')))
+
+        if not name:
+            continue
+
+        # Clean phone — pandas reads numbers without leading zeros
+        # and NaN becomes the string 'nan'
+        if phone == 'nan':
+            phone = ''
+
+        supplier, created = Supplier.objects.get_or_create(
+            supplier_name=name,
+            defaults={
+                'phone_number': phone,
+                'active':       True,
+            }
+        )
+        if created:
+            result['imported'] += 1
+        else:
+            if phone and supplier.phone_number != phone:
+                supplier.phone_number = phone
+                supplier.save()
+            result['updated'] += 1
+
+    return result
+
+
+# ── Master import orchestrator ────────────────────────────────────────
+
+def import_workbook(path, log, uploaded_by):
+    """
+    Runs all importers inside one atomic transaction.
+    Receives an existing ImportLog to update (not create new).
     Only called AFTER validate_workbook() returns valid=True.
 
     If anything fails mid-import, the entire transaction rolls back.
     """
-    log = ImportLog.objects.create(
-        file_name=file_obj.name if file_obj else str(path),
-        uploaded_by=uploaded_by,
-        status='pending',
-    )
-
     try:
         with transaction.atomic():
-            r = import_resources(path)
-            p = import_products(path)
-            b = import_bom(path)
-            w = import_wood(path)
+            r = import_resources(path) if _sheet_exists(path, 'Resource') else {'imported': 0, 'updated': 0, 'errors': []}
+            p = import_products(path) if _sheet_exists(path, 'Products') else {'imported': 0, 'updated': 0, 'errors': []}
+            b = import_bom(path) if _sheet_exists(path, 'BOM') else {'imported': 0, 'skipped': 0, 'errors': []}
+            w = import_wood(path) if _sheet_exists(path, 'Wood, Ply MDF') else {'imported': 0, 'skipped': 0, 'errors': []}
+            s = (import_suppliers(path)
+                 if _sheet_exists(path, 'Suppliers')
+                 else {'imported': 0, 'updated': 0})
 
             log.resources_imported  = r['imported'] + r['updated']
             log.products_imported   = p['imported'] + p['updated']
             log.bom_rows_imported   = b['imported']
             log.wood_parts_imported = w['imported']
+            log.suppliers_imported  = s['imported'] + s['updated']
             log.status              = 'success'
             log.error_log           = ''
             log.save()
@@ -656,6 +767,257 @@ def import_workbook(path, file_obj, uploaded_by):
     except Exception as e:
         log.status    = 'failed'
         log.error_log = f'Critical error during import: {e}'
+        log.save()
+
+    return log
+
+
+# ════════════════════════════════════════════════════════════════════
+# SINGLE-SHEET VALIDATION & IMPORT
+# Used when user selects "Import Suppliers Only" etc.
+# Adding a new sheet in future = add one entry to SHEET_REGISTRY.
+# ════════════════════════════════════════════════════════════════════
+
+SHEET_REGISTRY = {
+    'resources': {
+        'label':     'Resources',
+        'sheet':     'Resource',
+        'validator': validate_resources,
+        'importer':  import_resources,
+        'log_field': 'resources_imported',
+    },
+    'products': {
+        'label':     'Products',
+        'sheet':     'Products',
+        'validator': validate_products,
+        'importer':  import_products,
+        'log_field': 'products_imported',
+    },
+    'bom': {
+        'label':     'BOM',
+        'sheet':     'BOM',
+        'validator': validate_bom,
+        'importer':  import_bom,
+        'log_field': 'bom_rows_imported',
+    },
+    'wood': {
+        'label':     'Dimensions (Wood/Ply/MDF)',
+        'sheet':     'Wood, Ply MDF',
+        'validator': validate_wood,
+        'importer':  import_wood,
+        'log_field': 'wood_parts_imported',
+    },
+    'suppliers': {
+        'label':     'Suppliers',
+        'sheet':     'Suppliers',
+        'validator': validate_suppliers,
+        'importer':  import_suppliers,
+        'log_field': 'suppliers_imported',
+    },
+}
+
+
+def validate_single_sheet(path, sheet_key):
+    """
+    Validates one sheet only.
+    BOM and Wood cross-reference the database instead of the file
+    when imported individually (since the other sheets aren't present).
+    """
+    if sheet_key not in SHEET_REGISTRY:
+        return {
+            'valid':          False,
+            'errors':         [_err('—', '—',
+                               f'Unknown sheet key: {sheet_key}')],
+            'error_count':    1,
+            'sheets_checked': [],
+        }
+
+    entry = SHEET_REGISTRY[sheet_key]
+
+    if sheet_key in ('bom', 'wood'):
+        errors = _validate_bom_or_wood_against_db(path, sheet_key)
+    else:
+        errors = entry['validator'](path)
+
+    return {
+        'valid':          len(errors) == 0,
+        'errors':         errors,
+        'error_count':    len(errors),
+        'sheets_checked': [entry['sheet']],
+    }
+
+
+def _validate_bom_or_wood_against_db(path, sheet_key):
+    """
+    Validates BOM or Wood cross-references against the database
+    instead of against sheets in the same file.
+    Used when importing BOM or Wood individually.
+    """
+    errors = []
+
+    if sheet_key == 'bom':
+        sheet      = 'BOM'
+        df, read_error = _read_sheet(path, sheet)
+        if read_error:
+            return [_err(sheet, '—',
+                f'Cannot read sheet: {read_error}')]
+
+        required = ['Product', 'Resource', 'Quantity']
+        missing  = [c for c in required if c not in df.columns]
+        if missing:
+            return [_err(sheet, '—',
+                f'Missing columns: {", ".join(missing)}.')]
+
+        df['Product'] = df['Product'].ffill()
+
+        db_product_codes = set(
+            Product.objects.filter(
+                is_deleted=False
+            ).values_list('product_code', flat=True)
+        )
+        db_product_name_codes = {
+            _make_product_code(name)
+            for name in Product.objects.filter(
+                is_deleted=False
+            ).values_list('product_name', flat=True)
+        }
+        db_resources = set(
+            Resource.objects.filter(
+                active=True
+            ).values_list('resource_name', flat=True)
+        )
+
+        for idx, row in df.iterrows():
+            excel_row     = idx + 2
+            product_name  = _normalize(row['Product'])
+            resource_name = _normalize(row['Resource'])
+            qty_raw       = row['Quantity']
+
+            if not product_name and not resource_name:
+                continue
+            if not product_name:
+                errors.append(_err(sheet, excel_row,
+                    'Product Name is empty.'))
+                continue
+            if not resource_name:
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}": Resource is empty.'))
+                continue
+
+            try:
+                if pd.isna(qty_raw):
+                    raise ValueError()
+                qty = float(qty_raw)
+                if qty <= 0:
+                    errors.append(_err(sheet, excel_row,
+                        f'"{product_name}" / "{resource_name}": '
+                        f'Quantity must be > 0.'))
+            except (ValueError, TypeError):
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}" / "{resource_name}": '
+                    f'Quantity "{qty_raw}" is not valid.'))
+
+            code = _make_product_code(product_name)
+            if (code not in db_product_codes
+                    and code not in db_product_name_codes):
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}": Not found in database. '
+                    f'Import Products first.'))
+
+            if resource_name not in db_resources:
+                errors.append(_err(sheet, excel_row,
+                    f'"{resource_name}": Not found in database. '
+                    f'Import Resources first.'))
+
+    elif sheet_key == 'wood':
+        sheet      = 'Wood, Ply MDF'
+        df, read_error = _read_sheet(path, sheet)
+        if read_error:
+            return [_err(sheet, '—',
+                f'Cannot read sheet: {read_error}')]
+
+        required = ['Product', 'Resource', 'Width', 'Breath', 'Length']
+        missing  = [c for c in required if c not in df.columns]
+        if missing:
+            return [_err(sheet, '—',
+                f'Missing columns: {", ".join(missing)}.')]
+
+        df['Product'] = df['Product'].ffill()
+
+        db_product_codes = set(
+            Product.objects.filter(
+                is_deleted=False
+            ).values_list('product_code', flat=True)
+        )
+        db_resources = set(
+            Resource.objects.filter(
+                active=True
+            ).values_list('resource_name', flat=True)
+        )
+
+        for idx, row in df.iterrows():
+            excel_row     = idx + 2
+            product_name  = _normalize(row['Product'])
+            resource_name = _normalize(row['Resource'])
+
+            if not product_name and not resource_name:
+                continue
+            if not product_name:
+                errors.append(_err(sheet, excel_row,
+                    'Product Name is empty.'))
+                continue
+            if not resource_name:
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}": Resource is empty.'))
+                continue
+
+            for dim in ['Width', 'Breath', 'Length']:
+                val = row.get(dim)
+                try:
+                    if pd.isna(val):
+                        raise ValueError()
+                    f = float(val)
+                    if f < 0:
+                        errors.append(_err(sheet, excel_row,
+                            f'"{product_name}": '
+                            f'{dim} cannot be negative.'))
+                except (ValueError, TypeError):
+                    errors.append(_err(sheet, excel_row,
+                        f'"{product_name}": '
+                        f'{dim} "{val}" is not valid.'))
+
+            code = _make_product_code(product_name)
+            if code not in db_product_codes:
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}": Not found in database.'))
+
+            if resource_name not in db_resources:
+                errors.append(_err(sheet, excel_row,
+                    f'"{resource_name}": Not found in database.'))
+
+    return errors
+
+
+def import_single_sheet(path, sheet_key, log, uploaded_by):
+    """
+    Imports one sheet only.
+    Receives existing ImportLog to update.
+    Only called after validate_single_sheet() returns valid=True.
+    """
+    entry = SHEET_REGISTRY[sheet_key]
+
+    try:
+        with transaction.atomic():
+            result = entry['importer'](path)
+            count  = result.get('imported', 0) + result.get('updated', 0)
+            setattr(log, entry['log_field'], count)
+            log.status    = 'success'
+            log.error_log = ''
+            log.save()
+
+    except Exception as e:
+        log.status    = 'failed'
+        log.error_log = f'Critical error: {e}'
         log.save()
 
     return log

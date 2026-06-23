@@ -250,6 +250,152 @@
     </div>
 </div>
 
+<!-- ── Individual Sheet Imports ──────────────────────────────────── -->
+<div class="content-card mt-4">
+    <div class="card-header">
+        <i class="bi bi-file-earmark-excel me-2 text-success"></i>
+        Import Individual Sheets
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted mb-4" style="font-size:0.85rem;">
+            Only need to update one type of data?
+            Import individual sheets without uploading
+            the entire workbook.
+        </p>
+
+        <div class="row g-3">
+
+            <div class="col-12 col-md-6">
+                <div class="p-3"
+                     style="background:#f8f9fa;
+                            border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-semibold mb-1"
+                         style="font-size:0.875rem;">
+                        <i class="bi bi-collection me-2
+                                   text-primary"></i>
+                        Resources
+                    </div>
+                    <div class="text-muted mb-3"
+                         style="font-size:0.78rem;">
+                        Update materials, rates, and categories.
+                        Sheet must have columns:
+                        <code>Resource, Category, Units, Rate</code>
+                    </div>
+                    <a href="{% url 'imports:sheet' sheet_key='resources' %}"
+                       class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-upload me-1"></i>
+                        Import Resources
+                    </a>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="p-3"
+                     style="background:#f8f9fa;
+                            border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-semibold mb-1"
+                         style="font-size:0.875rem;">
+                        <i class="bi bi-box me-2
+                                   text-success"></i>
+                        Products
+                    </div>
+                    <div class="text-muted mb-3"
+                         style="font-size:0.78rem;">
+                        Add or update the product catalogue.
+                        Sheet must have one column of product names.
+                    </div>
+                    <a href="{% url 'imports:sheet' sheet_key='products' %}"
+                       class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-upload me-1"></i>
+                        Import Products
+                    </a>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="p-3"
+                     style="background:#f8f9fa;
+                            border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-semibold mb-1"
+                         style="font-size:0.875rem;">
+                        <i class="bi bi-truck me-2 text-secondary"></i>
+                        Suppliers
+                    </div>
+                    <div class="text-muted mb-3"
+                         style="font-size:0.78rem;">
+                        Add or update supplier records.
+                        Sheet must be named <code>Suppliers</code>
+                        with columns:
+                        <code>Supplier Name, Supplier Mobile</code>
+                    </div>
+                    <a href="{% url 'imports:sheet' sheet_key='suppliers' %}"
+                       class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-upload me-1"></i>
+                        Import Suppliers
+                    </a>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="p-3"
+                     style="background:#f8f9fa;
+                            border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-semibold mb-1"
+                         style="font-size:0.875rem;">
+                        <i class="bi bi-diagram-3 me-2
+                                   text-warning"></i>
+                        BOM
+                    </div>
+                    <div class="text-muted mb-3"
+                         style="font-size:0.78rem;">
+                        Update bill of materials.
+                        Products and Resources must already
+                        exist in the database.
+                        Columns:
+                        <code>Product, Resource, Quantity</code>
+                    </div>
+                    <a href="{% url 'imports:sheet' sheet_key='bom' %}"
+                       class="btn btn-outline-warning btn-sm">
+                        <i class="bi bi-upload me-1"></i>
+                        Import BOM
+                    </a>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="p-3"
+                     style="background:#f8f9fa;
+                            border-radius:8px;
+                            border:1px solid #e9ecef;">
+                    <div class="fw-semibold mb-1"
+                         style="font-size:0.875rem;">
+                        <i class="bi bi-rulers me-2
+                                   text-info"></i>
+                        Dimensions
+                    </div>
+                    <div class="text-muted mb-3"
+                         style="font-size:0.78rem;">
+                        Update dimension entries.
+                        Products and Resources must already exist.
+                        Sheet name must be
+                        <code>Wood, Ply MDF</code>
+                    </div>
+                    <a href="{% url 'imports:sheet' sheet_key='wood' %}"
+                       class="btn btn-outline-info btn-sm">
+                        <i class="bi bi-upload me-1"></i>
+                        Import Dimensions
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 {% endif %}
 
 {% endblock %}

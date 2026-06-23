@@ -61,9 +61,13 @@
         <tbody>
             {% for supplier in suppliers %}
             <tr>
-                <td class="ps-4 fw-semibold"
-                    style="font-size:0.875rem;">
-                    {{ supplier.supplier_name }}
+                <td class="ps-4">
+                    <div class="fw-semibold" style="font-size:0.875rem;">
+                        {{ supplier.supplier_name }}
+                    </div>
+                    <div style="font-size:0.72rem; color:#6c757d;">
+                        {{ supplier.supplier_code }}
+                    </div>
                 </td>
                 <td style="font-size:0.85rem;">
                     {% if supplier.phone_number %}
