@@ -83,12 +83,11 @@ def user_create(request):
 def user_edit(request, pk):
     edited_user = User.objects.get(pk=pk)
 
-    # Prevent admins from locking themselves out
-    if edited_user == request.user and not request.POST.get('is_active'):
-        messages.error(request, 'You cannot deactivate your own account.')
-        return redirect('accounts:user_list')
-
     if request.method == 'POST':
+        # Prevent admins from locking themselves out
+        if edited_user == request.user and not request.POST.get('is_active'):
+            messages.error(request, 'You cannot deactivate your own account.')
+            return redirect('accounts:user_list')
         username = request.POST.get('username', '').strip()
         is_staff = request.POST.get('is_staff') == 'on'
         is_active = request.POST.get('is_active') == 'on'
