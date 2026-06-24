@@ -1,6 +1,7 @@
 # apps/products/views.py
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
@@ -30,9 +31,13 @@ def product_list(request):
     elif status_filter == 'inactive':
         products = products.filter(active=False)
 
+    paginator = Paginator(products, 25)
+    page_obj  = paginator.get_page(request.GET.get('page'))
+
     context = {
         'page_title': 'Products',
-        'products': products,
+        'products': page_obj,
+        'page_obj': page_obj,
         'search_query': search_query,
         'status_filter': status_filter,
         'total_count': products.count(),

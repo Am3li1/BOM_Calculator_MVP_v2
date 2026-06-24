@@ -1,6 +1,7 @@
 # apps/suppliers/views.py
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
@@ -24,9 +25,13 @@ def supplier_list(request):
             Q(gst_number__icontains=search_query)
         )
 
+    paginator = Paginator(suppliers, 25)
+    page_obj  = paginator.get_page(request.GET.get('page'))
+    
     context = {
         'page_title': 'Suppliers',
-        'suppliers': suppliers,
+        'suppliers': page_obj,
+        'page_obj': page_obj,
         'search_query': search_query,
         'total_count': suppliers.count(),
     }

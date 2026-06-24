@@ -5,6 +5,20 @@ from django import template
 register = template.Library()
 
 
+@register.simple_tag(takes_context=True)
+def query_string(context, **kwargs):
+    request = context.get('request')
+    params = request.GET.copy() if request else {}
+
+    for key, value in kwargs.items():
+        if value is None:
+            params.pop(key, None)
+        else:
+            params[key] = value
+
+    return params.urlencode()
+
+
 @register.filter
 def get_item(dictionary, key):
     """

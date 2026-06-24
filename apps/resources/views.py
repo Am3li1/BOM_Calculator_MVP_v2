@@ -1,6 +1,7 @@
 # apps/resources/views.py
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q
@@ -57,9 +58,13 @@ def resource_list(request):
         list(db_categories) + [c for c in import_categories if c]
     ))
 
+    paginator = Paginator(resources, 25)
+    page_obj  = paginator.get_page(request.GET.get('page'))
+    
     context = {
         'page_title': 'Resources',
-        'resources': resources,
+        'resources': page_obj,
+        'page_obj': page_obj,
         'search_query': search_query,
         'category_filter': category_filter,
         'status_filter': status_filter,
