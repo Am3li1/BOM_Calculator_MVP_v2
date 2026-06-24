@@ -8,4 +8,5 @@ app_name = 'costing'
 urlpatterns = [
     path('', views.costing_list, name='list'),
     path('<int:product_pk>/', views.cost_sheet, name='sheet'),
+    path('export/full/', views.export_full_workbook, name='export_full'),
 ]
