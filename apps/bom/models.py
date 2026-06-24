@@ -69,7 +69,7 @@ class BOMItem(models.Model):
         Calculated automatically. Never stored. Never editable.
         Cost = Quantity × Rate
         """
-        return self.quantity * self.resource.rate
+        return self.quantity * self.rate
 
 
 class WoodPart(models.Model):
@@ -182,5 +182,4 @@ class WoodPart(models.Model):
     @property
     def cost(self):
         """Calculated cost — never stored."""
-        from decimal import Decimal
-        return Decimal(str(self.calculated_quantity)) * self.resource.rate
+        return self.calculated_quantity * self.rate
