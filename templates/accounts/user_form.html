@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="row justify-content-center">
+<div class="col-md-6">
+
+<div class="d-flex align-items-center mb-4 gap-2">
+    <a href="{% url 'accounts:user_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i>
+    </a>
+    <h4 class="mb-0">{{ page_title }}</h4>
+</div>
+
+<div class="content-card p-4">
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Username</label>
+            <input type="text" name="username" class="form-control"
+                   value="{{ edited_user.username|default:'' }}"
+                   placeholder="e.g. john" required>
+        </div>
+
+        {% if not edited_user %}
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Password</label>
+            <input type="password" name="password" class="form-control"
+                   placeholder="Min. 8 characters" required>
+        </div>
+        {% endif %}
+
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_staff"
+                       id="is_staff"
+                       {% if edited_user.is_staff %}checked{% endif %}>
+                <label class="form-check-label" for="is_staff">
+                    <strong>Admin</strong>
+                    <span class="text-muted d-block" style="font-size:0.8rem;">
+                        Can create, edit, delete, and import data
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        {% if edited_user %}
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" name="is_active"
+                       id="is_active"
+                       {% if edited_user.is_active %}checked{% endif %}
+                       {% if edited_user == request.user %}disabled{% endif %}>
+                <label class="form-check-label" for="is_active">
+                    <strong>Active</strong>
+                    <span class="text-muted d-block" style="font-size:0.8rem;">
+                        Inactive users cannot log in
+                        {% if edited_user == request.user %}
+                            &nbsp;·&nbsp; <em>Cannot deactivate your own account</em>
+                        {% endif %}
+                    </span>
+                </label>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary btn-sm">
+                <i class="bi bi-check-lg me-1"></i>{{ form_action }}
+            </button>
+            <a href="{% url 'accounts:user_list' %}"
+               class="btn btn-outline-secondary btn-sm">Cancel</a>
+        </div>
+    </form>
+</div>
+
+</div>
+</div>
+{% endblock %}
