@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — BOM Costing System
 
 > **Living document.** Update this file whenever major features are completed or the roadmap shifts.
-> Last updated: June 2026
+> Last updated: June 2026 — Supplier Detail Page complete, redirect bug fixed
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Current Version:** MVP v1.0 — Feature-complete for core BOM costing. In active use/development.
 
-**Overall Health:** Functional and deployed. Core workflows work end-to-end. Several important bugs and missing features (export, correct cost calculations) need addressing before production-critical use.
+**Overall Health:** Functional and deployed. All core workflows work end-to-end. Excel import and export are complete. Supplier Detail Page is now complete. Three medium-priority items remain: WoodPart import deduplication, ImportLog admin registration, and PostgreSQL migration for production persistence.
 
 ---
 
@@ -75,7 +75,29 @@
 - Update supplier rate
 - Unlink supplier (with auto-promotion of next cheapest if preferred was removed)
 - Price comparison display on resource detail (cheapest vs highest, savings)
-- **Notes:** No supplier detail page yet. Supplier-level view of all linked resources is missing.
+- **Bug fixed:** `supplier_create`, `supplier_edit`, `supplier_toggle_active` were all
+  redirecting to `'suppliers:list'` (NoReverseMatch). Fixed to `'suppliers:supplier_list'`.
+
+---
+
+### Module: Supplier Detail Page (`apps.suppliers`)
+**Status: ✅ Complete**
+- `supplier_detail` view in `apps/suppliers/views.py`
+- URL route `<int:pk>/` registered as `suppliers:supplier_detail`
+- Supplier name in list page is now a clickable link to the detail page
+- "View" button added to supplier list actions column
+- Template at `templates/suppliers/supplier_detail.html` with:
+  - Header: supplier name, Active/Inactive badge, Edit and Deactivate/Activate buttons
+  - Supplier info card: name, phone (tap-to-call link), GST number, status
+  - 4 equal-height stat cards: Total Resources, Active Links, Preferred For, Sum of Active Rates
+  - Resources table: resource name, category badge, unit, supplier rate (₹), preferred star, link status, jump-to-resource button
+  - Row colour coding: grey for inactive links, green for active+preferred, white for active only
+  - Empty state when no resources are linked
+- `select_related('resource')` used to eliminate N+1 queries
+- **Bug fixed:** Multi-line `{# #}` comments were rendering as visible text. Replaced with
+  `{% comment %}...{% endcomment %}` block tags throughout.
+- **Notes:** Toggle active from detail page redirects to supplier list (existing behaviour).
+  Minor polish item: pass `?next=` to stay on detail page after toggle.
 
 ---
 
@@ -104,7 +126,8 @@
   - Dimensions section (WoodParts shown for reference — no cost added)
   - Grand total
 - Print-friendly CSS (sidebar/navbar hidden on print)
-- **Known Bug:** Cost calculations use `resource.rate` (master rate) NOT `resource.effective_rate`. Supplier pricing and overrides are NOT reflected in cost sheets. See Known Issues section.
+- **Known Bug:** Cost calculations use `resource.rate` (master rate) NOT `resource.effective_rate`.
+  Supplier pricing and manual overrides are NOT reflected in cost sheets. See Known Issues.
 
 ---
 
@@ -114,69 +137,63 @@
 - Individual sheet import per sheet type
 - Two-phase import: validate → (if clean) → import atomically
 - ImportLog: every attempt recorded with status, counts, error log
-- Import history view
-- Import result view with validation error display
+- Import history view and import result view with validation error display
 - **Supported sheets:** Resource, Products, BOM, Wood/Ply/MDF, Suppliers
 - Upsert behaviour for Resources, Products, BOM, Suppliers
 - BOM/Wood cross-reference validation (file-based for full import; DB-based for individual)
 - File constraints: .xlsx/.xls, max 10MB
-- **Notes:** WoodPart import always creates new records — re-importing duplicates wood parts. ImportLog admin registration is missing (imports admin.py is empty).
+- **Notes:** WoodPart import always creates new records — re-importing duplicates wood parts.
+  ImportLog not registered in Django admin.
+
+---
+
+### Module: Excel Export (`apps.costing`)
+**Status: ✅ Complete**
+- Per-product cost sheet export at `/costing/<pk>/export/`
+- Full workbook export at `/costing/export/full/`
+- 7-sheet export: Products, Resources, Suppliers, SupplierRates, BOM, Dimensions, CostSummary
+- Frozen header rows, auto-sized columns, currency formatting, alternating row striping
+- Preferred supplier rows highlighted in green
+- CostSummary sorted by highest total cost first
+- Filename format: `Product_Costing_Export_YYYYMMDD.xlsx`
 
 ---
 
 ## Pending Features
 
-Prioritised list:
-
-| Priority | Feature | Notes |
-|---|---|---|
-| 🔴 HIGH | **Fix `BOMItem.cost` to use `effective_rate`** | Correctness bug — cost sheets show wrong values when suppliers are configured |
-| 🔴 HIGH | **Fix `WoodPart.cost` to use `effective_rate`** | Same issue |
-| 🔴 HIGH | **Cost sheet Excel export** | Most-wanted user feature |
-| 🟡 MEDIUM | **Fix WoodPart re-import duplication** | Add upsert by (product, resource, part_name) |
-| 🟡 MEDIUM | **ImportLog admin registration** | `apps/imports/admin.py` is empty |
-| 🟡 MEDIUM | **Supplier detail page** | Show all resources linked to a supplier |
-| 🟡 MEDIUM | **PostgreSQL migration** | Required before real production use |
-| 🟡 MEDIUM | **Cost sheet PDF export** | Print-to-PDF works but a proper PDF download would be better |
-| 🟢 LOW | **Dashboard enhancements** | Charts, supplier count, cost totals across all products |
-| 🟢 LOW | **Role-based permissions** | Admin vs read-only viewer |
-| 🟢 LOW | **User management UI** | Currently requires Django admin |
-| 🟢 LOW | **Password reset** | Currently no self-service reset |
-| 🟢 LOW | **Supplier additional fields** | Address, email, payment terms, lead time |
-| 🟢 LOW | **ResourceSupplier fields** | stock_available, lead_time_days, last_quoted_at |
-| 🟢 LOW | **BOM versioning** | Track changes over time |
-| 🟢 LOW | **Overhead allocation** | % overhead on top of direct costs |
-| 🟢 LOW | **Audit trail** | Who changed what and when |
-| 🟢 LOW | **Bulk operations** | Bulk activate/deactivate products/resources |
+| Priority | Feature | File / Location | Notes |
+|---|---|---|---|
+| 🟡 MEDIUM | **Fix WoodPart re-import duplication** | `apps/imports/services.py → import_wood()` | Always creates new records; re-import doubles wood parts |
+| 🟡 MEDIUM | **Register ImportLog in admin** | `apps/imports/admin.py` (currently empty) | Admins can't manage import logs via Django admin |
+| 🟡 MEDIUM | **PostgreSQL migration** | `config/settings.py`, `requirements.txt`, Render config | SQLite resets on every Render deploy; data lost in production |
+| 🟡 MEDIUM | **Fix BOMItem.cost to use effective_rate** | `apps/bom/models.py`, `apps/costing/views.py` | Cost sheets don't reflect supplier pricing or overrides |
+| 🟢 LOW | **Supplier detail: stay on page after toggle** | `apps/suppliers/views.py → supplier_toggle_active` | Currently redirects to list; pass `next` param to stay on detail |
+| 🟢 LOW | **Dashboard enhancements** | `apps/core/views.py` | Add supplier count, total portfolio cost, simple charts |
+| 🟢 LOW | **Role-based permissions** | New middleware or decorators | Admin vs read-only viewer |
+| 🟢 LOW | **User management UI** | New views in `apps/accounts` | Currently requires Django admin |
+| 🟢 LOW | **Password reset flow** | `apps/accounts/urls.py` | No self-service reset |
+| 🟢 LOW | **Supplier additional fields** | `apps/suppliers/models.py` | Address, email, payment terms, lead time |
+| 🟢 LOW | **ResourceSupplier fields** | `apps/suppliers/models.py` | stock_available, lead_time_days, last_quoted_at |
+| 🟢 LOW | **BOM versioning / history** | New model in `apps/bom` | Track changes over time |
+| 🟢 LOW | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
+| 🟢 LOW | **Audit trail** | New middleware or model mixin | Who changed what and when |
+| 🟢 LOW | **Pagination** | All list views | Resource, product, supplier, import history lists have no pagination |
+| 🟢 LOW | **Bulk operations** | List view templates + views | Bulk activate/deactivate products/resources |
 
 ---
 
 ## Known Issues
 
-### 🔴 CRITICAL: Wrong Rate Used in Cost Calculations
+### 🟡 MEDIUM: BOMItem.cost Uses Master Rate, Not Effective Rate
 
-**File:** `apps/bom/models.py`
+**Files:** `apps/bom/models.py`, `apps/costing/views.py`
 
-```python
-# BOMItem.cost property (WRONG — uses master rate):
-@property
-def cost(self):
-    return self.quantity * self.resource.rate   # ← should be effective_rate
+`BOMItem.cost` uses `resource.rate` directly. `BOMItem.rate` (a separate property) correctly uses
+`resource.effective_rate`. The two are inconsistent. Cost sheets do not reflect supplier pricing
+or manual override rates — they always show the master rate.
 
-# BOMItem.rate property (CORRECT):
-@property
-def rate(self):
-    return self.resource.effective_rate  # ← this is right
-
-# WoodPart.cost property (WRONG — uses master rate):
-@property
-def cost(self):
-    return Decimal(str(self.calculated_quantity)) * self.resource.rate  # ← should be effective_rate
-```
-
-**Impact:** If a supplier is linked and preferred, the cost sheet does NOT reflect that rate. It uses the `resource.rate` (master/import rate) instead. All cost sheets showing resources with supplier pricing are potentially incorrect.
-
-**Fix:** Change both `.cost` properties to use `self.resource.effective_rate`.
+**Fix:** Change `BOMItem.cost` to use `self.resource.effective_rate`. Same fix needed for
+`WoodPart.cost`. Add unit tests before and after to verify the change.
 
 ---
 
@@ -184,9 +201,10 @@ def cost(self):
 
 **File:** `apps/imports/services.py → import_wood()`
 
-The function always creates new WoodPart records. Re-uploading the same Excel file doubles all wood part entries for every product.
+Always creates new `WoodPart` records. Re-uploading the same Excel file doubles all wood part
+entries for every product silently.
 
-**Fix:** Use `get_or_create` on `(product, resource, part_name)` or clear existing WoodParts before import.
+**Fix:** Use `update_or_create` keyed on `(product, resource, part_name)`.
 
 ---
 
@@ -194,9 +212,19 @@ The function always creates new WoodPart records. Re-uploading the same Excel fi
 
 **File:** `apps/imports/admin.py` (empty)
 
-ImportLog records are visible only through the web UI import history page. Admins cannot manage them via Django admin.
+ImportLog records are only visible through the web UI import history page.
 
-**Fix:** Register `ImportLog` in `apps/imports/admin.py`.
+**Fix:**
+```python
+from django.contrib import admin
+from .models import ImportLog
+
+@admin.register(ImportLog)
+class ImportLogAdmin(admin.ModelAdmin):
+    list_display = ['created_at', 'sheet_name', 'status', 'rows_imported', 'rows_failed']
+    list_filter = ['status', 'sheet_name']
+    readonly_fields = ['created_at', 'error_log']
+```
 
 ---
 
@@ -210,82 +238,123 @@ def supplier_code(self):
     return f'SUP-{self.pk:03d}'  # pk is ResourceSupplier PK, not Supplier PK
 ```
 
-This property is on `ResourceSupplier` (the join table) and uses that table's PK, not the Supplier's PK. The name implies it's a supplier identifier, but it's actually a link identifier.
-
----
-
-### 🟢 LOW: No CSRF on Some Quick-Action Forms
-
-Some small inline POST forms (toggle active, set preferred, update rate) may not consistently include `{% csrf_token %}`. Should audit all templates.
+Uses the join table's PK, not the Supplier's PK. The name implies a supplier identifier but it
+is actually a link identifier. Low risk (display only) but confusing for developers.
 
 ---
 
 ### 🟢 LOW: SQLite Production Data Loss
 
-Every Render deployment resets the SQLite database. This is documented and accepted for MVP but must be resolved before real production use.
+Every Render deployment resets the SQLite database. Documented and accepted for MVP. Must be
+resolved before real production use — migrate to PostgreSQL.
+
+---
+
+### 🟢 LOW: No CSRF Audit on Quick-Action Forms
+
+Some small inline POST forms (toggle active, set preferred, update rate) may not consistently
+include `{% csrf_token %}`. Should audit all templates before production.
 
 ---
 
 ## Technical Debt
 
-1. **`BOMItem.cost` vs `BOMItem.rate` inconsistency** — `.rate` uses `effective_rate` but `.cost` uses `resource.rate`. The two properties are inconsistent. Should be unified.
+1. **`BOMItem.cost` vs `BOMItem.rate` inconsistency** — `.rate` uses `effective_rate` but
+   `.cost` uses `resource.rate`. Should be unified. High priority to fix before real use.
 
-2. **`WoodPart.calculated_quantity` imports `SystemConfig` inside the property** — lazy import pattern; could be a class-level concern.
+2. **`WoodPart.calculated_quantity` imports `SystemConfig` inside the property** — lazy import
+   pattern; should be a module-level import for clarity.
 
-3. **`resource.rate` stored as `Decimal` but `WoodPart` dimensions use `float` in view** — the view converts to float then stores as Decimal. Mixing float/Decimal risks precision issues.
+3. **`resource.rate` is Decimal but `WoodPart` dimensions use float in views** — the view
+   converts to float then stores as Decimal. Mixing float/Decimal risks precision loss.
 
-4. **`bom_item.cost` in `bom/views.py` uses raw Python sum()** — `sum(item.cost for item in bom_items)` — no database aggregation. Will be slow for large BOMs.
+4. **`bom_item.cost` summed in Python, not SQL** — `sum(item.cost for item in bom_items)` has
+   no database aggregation. Will degrade with large BOMs.
 
-5. **No select_related on BOM list view** — `bom_items.select_related('resource')` is used but `resource.supplier_links` is not prefetched when displaying effective rate on BOM page. Could cause N+1 queries.
+5. **No `select_related` on BOM list for supplier links** — `resource.supplier_links` is not
+   prefetched when displaying effective rate on BOM page. Potential N+1 queries.
 
-6. **`_make_product_code` in services.py regex could collide** — "TEAK WOOD" and "TEAK-WOOD" would both become "TEAK-WOOD". Product code uniqueness across import batches could be fragile.
+6. **`_make_product_code` regex collision risk** — "TEAK WOOD" and "TEAK-WOOD" both become
+   "TEAK-WOOD". Product code uniqueness across import batches could be fragile.
 
-7. **`upload_sheet` view imports services inline** — `from .services import SHEET_REGISTRY, ...` inside the function. Should be module-level import.
+7. **`upload_sheet` view imports services inline** — `from .services import ...` inside the
+   function body. Should be a module-level import.
 
-8. **`category` on Resource is a plain CharField** — not a FK to `ResourceCategory`. Import can create resources with categories not in `ResourceCategory`, causing filter inconsistencies. The view compensates by merging both sources.
+8. **`category` on Resource is a plain CharField, not a FK** — import can create resources with
+   categories not in `ResourceCategory`, causing filter inconsistencies. The view compensates
+   by merging both sources, but the root cause is unresolved.
 
-9. **No pagination** — resource list, product list, supplier list, import history have no pagination. Will degrade with large datasets.
+9. **No pagination on any list view** — resource, product, supplier, import history lists will
+   degrade significantly with large datasets.
 
-10. **`BOMItem.cost` calculated in Python, not SQL** — `costing/views.py` fetches all BOM items and sums in Python. No `annotate(total=Sum(...))`.
+10. **`BOMItem.cost` calculated in Python, not SQL** — `costing/views.py` fetches all BOM items
+    and sums in Python. Should use `annotate(total=Sum(...))` for large datasets.
 
 ---
 
-## Recent Changes (Git History Summary)
+## Recent Changes Log
 
-Based on migration files and code structure:
-- Initial project setup: Django 5, apps scaffold
-- Products: soft delete, product code, basic CRUD
-- Resources: categories as DB model, supplier linking, override rate
-- BOM: WoodPart model with units per dimension, formula types
-- Suppliers: ResourceSupplier join table, preferred logic
-- Imports: two-phase validate+import, ImportLog, individual sheet import
-- Costing: cost sheet with category grouping, print CSS
-- Products: clone feature
-- Suppliers: import support added to services.py
+| Date | Change | Files |
+|---|---|---|
+| Jun 2026 | Supplier Detail Page — new view, URL, template | `apps/suppliers/views.py`, `apps/suppliers/urls.py`, `templates/suppliers/supplier_detail.html` |
+| Jun 2026 | Fixed supplier redirect bug — `'suppliers:list'` → `'suppliers:supplier_list'` in 3 views | `apps/suppliers/views.py` |
+| Jun 2026 | Fixed multi-line `{# #}` comments rendering as visible text in supplier detail template | `templates/suppliers/supplier_detail.html` |
+| Jun 2026 | Excel Export module completed | `apps/costing/` |
+| Jun 2026 | Initial project setup through import module | All apps |
 
 ---
 
 ## Recommended Next Task
 
-**Fix the cost calculation bug first** (`BOMItem.cost` and `WoodPart.cost` should use `effective_rate`). This is a correctness issue affecting every cost sheet where supplier pricing has been configured. It's a 2-line fix with wide impact:
+### Option A — Fix WoodPart Re-import Duplication (🟡 Medium, ~1 hour)
+
+**Why:** Users running regular Excel imports are silently accumulating duplicate wood part rows.
+This corrupts dimension data and inflates any dimension-based reporting. It's a data integrity
+bug that gets worse with every import.
+
+**What to change:** `apps/imports/services.py → import_wood()`
+
+Replace `WoodPart.objects.create(...)` with `update_or_create` keyed on
+`(product, resource, part_name)`:
 
 ```python
-# In apps/bom/models.py
-
-# BOMItem.cost — change:
-return self.quantity * self.resource.rate
-# to:
-return self.quantity * self.resource.effective_rate
-
-# WoodPart.cost — change:
-return Decimal(str(self.calculated_quantity)) * self.resource.rate
-# to:
-return Decimal(str(self.calculated_quantity)) * self.resource.effective_rate
+wood_part, created = WoodPart.objects.update_or_create(
+    product=product,
+    resource=resource,
+    part_name=part_name,
+    defaults={
+        'width': width,
+        'breadth': breadth,
+        'height': height,
+        'length': length,
+        'pieces': pieces,
+        'width_unit': width_unit,
+        'length_unit': length_unit,
+        'formula_type': formula_type,
+    }
+)
 ```
 
-Then write a test verifying the effective_rate chain is used.
+---
 
-**After that:** Implement Excel export for cost sheets (`openpyxl` is already in requirements).
+### Option B — Register ImportLog in Admin (🟡 Medium, ~15 minutes)
+
+**Why:** Admins currently have no way to delete old import logs or inspect them via Django admin.
+The fix is four lines of code.
+
+**What to change:** `apps/imports/admin.py` (currently empty — just add the registration block
+shown in Known Issues above).
+
+---
+
+### Option C — Fix BOMItem.cost to Use effective_rate (🟡 Medium, ~2 hours with tests)
+
+**Why:** Cost sheets are currently wrong — they show master rates even when a supplier override
+or manual override is in effect. This is the most impactful correctness bug in the system.
+
+**What to change:** `apps/bom/models.py` — change `BOMItem.cost` and `WoodPart.cost` to use
+`self.resource.effective_rate` instead of `self.resource.rate`. Write unit tests first so you
+can verify behaviour before and after.
 
 ---
 
@@ -304,11 +373,12 @@ Then write a test verifying the effective_rate chain is used.
 
 ## Testing Notes
 
-- **Only one test file:** `apps/imports/tests.py` — one `SimpleTestCase` verifying `_sheet_exists` closes temp files.
+- **Only one test file:** `apps/imports/tests.py` — one `SimpleTestCase` verifying `_sheet_exists`
+  closes temp files.
 - **No model tests, no view tests, no form tests.**
 - Run tests: `python manage.py test`
 - Before any significant refactor, especially to cost calculation logic, add unit tests for:
-  - `Resource.effective_rate` priority chain
+  - `Resource.effective_rate` priority chain (override → preferred supplier → lowest → master)
   - `BOMItem.cost` with and without suppliers
-  - `WoodPart.calculated_quantity` for both formula types
+  - `WoodPart.calculated_quantity` for both formula types (standard and area)
   - Import validators (validate_resources, validate_bom, validate_wood)

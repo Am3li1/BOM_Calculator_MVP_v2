@@ -8,7 +8,7 @@ from django.db import transaction
 
 from .models import Supplier, ResourceSupplier
 from .forms import SupplierForm
-
+from decimal import Decimal
 
 # ── Supplier CRUD ─────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ def supplier_create(request):
                 request,
                 f'Supplier "{supplier.supplier_name}" created.'
             )
-            return redirect('suppliers:list')
+            return redirect('suppliers:supplier_list')
         messages.error(request, 'Please fix the errors below.')
     else:
         form = SupplierForm()
@@ -68,7 +68,7 @@ def supplier_edit(request, pk):
                 request,
                 f'Supplier "{supplier.supplier_name}" updated.'
             )
-            return redirect('suppliers:list')
+            return redirect('suppliers:supplier_list')
         messages.error(request, 'Please fix the errors below.')
     else:
         form = SupplierForm(instance=supplier)
@@ -93,7 +93,7 @@ def supplier_toggle_active(request, pk):
             request,
             f'"{supplier.supplier_name}" {status}.'
         )
-    return redirect('suppliers:list')
+    return redirect('suppliers:supplier_list')
 
 
 # ── Resource-Supplier linking ─────────────────────────────────────────
@@ -296,3 +296,74 @@ def resource_update_supplier_rate(request, resource_pk, supplier_pk):
             )
 
     return redirect('resources:detail', pk=resource_pk)
+
+@login_required
+def supplier_detail(request, pk):
+    """
+    Show a single supplier's profile page.
+
+    Displays:
+    - Supplier contact info (name, phone, GST)
+    - Every resource this supplier is linked to, with their rate
+    - Visual indicators for preferred status and active/inactive links
+    - A summary: total resources supplied, preferred count, active count
+    """
+
+    # get_object_or_404: fetch Supplier with this PK from the DB.
+    # If no Supplier has this PK, Django automatically returns a 404 page.
+    # This is safer and shorter than:
+    #   try:
+    #       supplier = Supplier.objects.get(pk=pk)
+    #   except Supplier.DoesNotExist:
+    #       raise Http404
+    supplier = get_object_or_404(Supplier, pk=pk)
+
+    # Fetch all ResourceSupplier rows for this supplier.
+    #
+    # select_related('resource', 'resource__category') tells Django:
+    #   "When you load each ResourceSupplier, also JOIN and load the
+    #    related Resource row AND the Resource's category in the same
+    #    SQL query."
+    #
+    # Without this, if a supplier has 20 resources, Django fires:
+    #   1 query for ResourceSupplier rows
+    #   20 queries for Resource rows (one per row) — the N+1 problem!
+    # With select_related: just 1 query total. Always do this on FKs.
+    #
+    # We include ALL links (active and inactive) so staff can see
+    # the complete history. The template will style them differently.
+    resource_links = (
+        ResourceSupplier.objects
+        .filter(supplier=supplier)
+    .select_related('resource')
+        .order_by('resource__resource_name')  # alphabetical by resource name
+    )
+
+    # Build summary counts for the stats panel at the top of the page.
+    # We use Python to count from the already-fetched queryset.
+    # Calling .count() on a queryset fires a new SQL COUNT query.
+    # Since resource_links isn't evaluated yet, these fire efficient queries.
+    total_links = resource_links.count()
+    active_links = resource_links.filter(active=True).count()
+    preferred_links = resource_links.filter(preferred=True).count()
+
+    # Calculate total spend potential: sum of (supplier_rate) for active links.
+    # We import Decimal here to handle the case where there are no links
+    # (sum of an empty sequence would be 0, but we want Decimal('0')).
+    from decimal import Decimal
+    total_value = sum(
+        link.supplier_rate
+        for link in resource_links.filter(active=True)
+        # supplier_rate is a DecimalField, so arithmetic stays precise
+    ) if active_links > 0 else Decimal('0')
+
+    context = {
+        'supplier': supplier,          # The Supplier object
+        'resource_links': resource_links,  # QuerySet of ResourceSupplier rows
+        'total_links': total_links,
+        'active_links': active_links,
+        'preferred_links': preferred_links,
+        'total_value': total_value,
+    }
+
+    return render(request, 'suppliers/supplier_detail.html', context)
