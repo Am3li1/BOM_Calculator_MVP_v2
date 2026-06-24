@@ -640,7 +640,7 @@ def import_bom(path):
 
 
 def import_wood(path):
-    result = {'imported': 0, 'skipped': 0, 'errors': []}
+    result = {'imported': 0, 'updated': 0, 'skipped': 0, 'errors': []}
 
     df, read_error = _read_sheet(path, 'Wood, Ply MDF')
     if read_error or df is None:
@@ -678,13 +678,26 @@ def import_wood(path):
             result['skipped'] += 1
             continue
 
-        WoodPart.objects.create(
-            product=product, resource=resource,
+        # Use update_or_create keyed on (product, resource, part_name).
+        # If a matching WoodPart already exists, its dimensions are updated.
+        # If no match exists, a new record is created.
+        # This prevents duplicate rows when the same file is re-imported.
+        _, created = WoodPart.objects.update_or_create(
+            product=product,
+            resource=resource,
             part_name=part_name,
-            width=width, breadth=breadth,
-            length=length, pieces=pieces,
+            defaults={
+                'width':   width,
+                'breadth': breadth,
+                'length':  length,
+                'pieces':  pieces,
+            },
         )
-        result['imported'] += 1
+
+        if created:
+            result['imported'] += 1
+        else:
+            result['updated'] += 1
 
     return result
 
@@ -750,7 +763,7 @@ def import_workbook(path, log, uploaded_by):
             r = import_resources(path) if _sheet_exists(path, 'Resource') else {'imported': 0, 'updated': 0, 'errors': []}
             p = import_products(path) if _sheet_exists(path, 'Products') else {'imported': 0, 'updated': 0, 'errors': []}
             b = import_bom(path) if _sheet_exists(path, 'BOM') else {'imported': 0, 'skipped': 0, 'errors': []}
-            w = import_wood(path) if _sheet_exists(path, 'Wood, Ply MDF') else {'imported': 0, 'skipped': 0, 'errors': []}
+            w = import_wood(path) if _sheet_exists(path, 'Wood, Ply MDF') else {'imported': 0, 'updated': 0, 'skipped': 0, 'errors': []}
             s = (import_suppliers(path)
                  if _sheet_exists(path, 'Suppliers')
                  else {'imported': 0, 'updated': 0})
@@ -758,7 +771,7 @@ def import_workbook(path, log, uploaded_by):
             log.resources_imported  = r['imported'] + r['updated']
             log.products_imported   = p['imported'] + p['updated']
             log.bom_rows_imported   = b['imported']
-            log.wood_parts_imported = w['imported']
+            log.wood_parts_imported = w['imported'] + w['updated']
             log.suppliers_imported  = s['imported'] + s['updated']
             log.status              = 'success'
             log.error_log           = ''
