@@ -3,6 +3,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required
 from django.contrib import messages
 from django.db.models import Q
 from django.db import transaction
@@ -14,6 +15,7 @@ from decimal import Decimal
 # ── Supplier CRUD ─────────────────────────────────────────────────────
 
 @login_required
+@admin_required
 def supplier_list(request):
     search_query = request.GET.get('search', '').strip()
     suppliers = Supplier.objects.all()
@@ -39,6 +41,7 @@ def supplier_list(request):
 
 
 @login_required
+@admin_required
 def supplier_create(request):
     if request.method == 'POST':
         form = SupplierForm(request.POST)
@@ -63,6 +66,7 @@ def supplier_create(request):
 
 
 @login_required
+@admin_required
 def supplier_edit(request, pk):
     supplier = get_object_or_404(Supplier, pk=pk)
 
@@ -89,6 +93,7 @@ def supplier_edit(request, pk):
 
 
 @login_required
+@admin_required
 def supplier_toggle_active(request, pk):
     supplier = get_object_or_404(Supplier, pk=pk)
     if request.method == 'POST':
@@ -106,6 +111,7 @@ def supplier_toggle_active(request, pk):
 # ── Resource-Supplier linking ─────────────────────────────────────────
 
 @login_required
+@admin_required
 def resource_link_supplier(request, resource_pk):
     """
     Links a supplier to a resource with a rate.
@@ -178,6 +184,7 @@ def resource_link_supplier(request, resource_pk):
 
 
 @login_required
+@admin_required
 def resource_unlink_supplier(request, resource_pk, supplier_pk):
     """
     Removes a supplier link. If it was the preferred supplier,
@@ -231,6 +238,7 @@ def resource_unlink_supplier(request, resource_pk, supplier_pk):
 
 
 @login_required
+@admin_required
 def resource_set_preferred(request, resource_pk, supplier_pk):
     """
     Sets one supplier as preferred for a resource.
@@ -270,6 +278,7 @@ def resource_set_preferred(request, resource_pk, supplier_pk):
 
 
 @login_required
+@admin_required
 def resource_update_supplier_rate(request, resource_pk, supplier_pk):
     """
     Updates the rate for a specific supplier-resource link.
@@ -305,6 +314,7 @@ def resource_update_supplier_rate(request, resource_pk, supplier_pk):
     return redirect('resources:detail', pk=resource_pk)
 
 @login_required
+@admin_required
 def supplier_detail(request, pk):
     """
     Show a single supplier's profile page.

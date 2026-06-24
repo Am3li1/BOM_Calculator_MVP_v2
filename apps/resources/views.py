@@ -3,6 +3,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required
 from django.contrib import messages
 from django.db.models import Q
 
@@ -12,6 +13,7 @@ from decimal import Decimal
 
 
 @login_required
+@admin_required
 def resource_list(request):
     """
     Shows all resources in a searchable, filterable table.
@@ -75,6 +77,7 @@ def resource_list(request):
 
 
 @login_required
+@admin_required
 def resource_create(request):
     """
     GET  → shows blank form with database categories
@@ -109,6 +112,7 @@ def resource_create(request):
 
 
 @login_required
+@admin_required
 def resource_edit(request, pk):
     """
     GET  → shows form pre-filled with existing data
@@ -149,6 +153,7 @@ def resource_edit(request, pk):
 
 
 @login_required
+@admin_required
 def resource_toggle_active(request, pk):
     """
     Toggles a resource between active and inactive.
@@ -167,6 +172,7 @@ def resource_toggle_active(request, pk):
     return redirect('resources:list')
 
 @login_required
+@admin_required
 def resource_delete(request, pk):
     """
     Deletes a resource only if it is not used in any BOM or Dimension entry.
@@ -230,6 +236,7 @@ def resource_delete(request, pk):
     return render(request, 'resources/delete.html', context)
 
 @login_required
+@admin_required
 def resource_detail(request, pk):
     from apps.suppliers.models import Supplier, ResourceSupplier
     from decimal import Decimal
@@ -277,6 +284,7 @@ def resource_detail(request, pk):
     return render(request, 'resources/detail.html', context)
 
 @login_required
+@admin_required
 def resource_set_override(request, pk):
     """
     Sets or clears the manual override rate on a resource.

@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required
 from django.contrib import messages
 
 from apps.products.models import Product
@@ -7,6 +8,7 @@ from .models import BOMItem
 
 
 @login_required
+@admin_required
 def bom_list(request, product_pk):
     from .models import WoodPart
 
@@ -38,6 +40,7 @@ def bom_list(request, product_pk):
 
 
 @login_required
+@admin_required
 def bom_add(request, product_pk):
     from apps.resources.models import Resource
 
@@ -86,6 +89,7 @@ def bom_add(request, product_pk):
 
 
 @login_required
+@admin_required
 def bom_remove(request, pk):
     bom_item = get_object_or_404(BOMItem, pk=pk)
     product_pk = bom_item.product.pk
@@ -99,6 +103,7 @@ def bom_remove(request, pk):
 
 
 @login_required
+@admin_required
 def bom_edit_quantity(request, pk):
     bom_item = get_object_or_404(BOMItem, pk=pk)
     product_pk = bom_item.product.pk
@@ -118,6 +123,7 @@ def bom_edit_quantity(request, pk):
     return redirect('bom:list', product_pk=product_pk)
 
 @login_required
+@admin_required
 def woodpart_add(request, product_pk):
     """
     Adds a Dimension entry to a product.
@@ -202,6 +208,7 @@ def woodpart_add(request, product_pk):
 
 
 @login_required
+@admin_required
 def woodpart_edit(request, pk):
     """
     Edits an existing Dimension entry.
@@ -286,6 +293,7 @@ def woodpart_edit(request, pk):
 
 
 @login_required
+@admin_required
 def woodpart_remove(request, pk):
     """
     Removes a WoodPart. POST only for safety.

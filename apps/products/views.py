@@ -3,6 +3,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required
 from django.contrib import messages
 from django.db.models import Q
 
@@ -11,6 +12,7 @@ from .forms import ProductForm
 
 
 @login_required
+@admin_required
 def product_list(request):
     """Shows all non-deleted products with search."""
 
@@ -46,6 +48,7 @@ def product_list(request):
 
 
 @login_required
+@admin_required
 def product_create(request):
     """
     Create a new product.
@@ -99,6 +102,7 @@ def product_create(request):
 
 
 @login_required
+@admin_required
 def product_edit(request, pk):
     """Edit an existing product."""
     product = get_object_or_404(Product, pk=pk, is_deleted=False)
@@ -127,6 +131,7 @@ def product_edit(request, pk):
 
 
 @login_required
+@admin_required
 def product_delete(request, pk):
     """
     Soft delete — marks product as deleted but keeps data.
@@ -145,6 +150,7 @@ def product_delete(request, pk):
     return redirect('products:list')
 
 @login_required
+@admin_required
 def clone_product(request, pk):
     """
     Clones an existing product including all its BOM items and Wood Parts.

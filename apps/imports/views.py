@@ -7,6 +7,7 @@ import tempfile
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required
 from django.contrib import messages
 
 from .models import ImportLog
@@ -14,6 +15,7 @@ from .services import validate_workbook, import_workbook
 
 
 @login_required
+@admin_required
 def upload(request):
     recent_logs = ImportLog.objects.order_by('-created_at')[:10]
 
@@ -106,6 +108,7 @@ def upload(request):
 
 
 @login_required
+@admin_required
 def import_result(request, pk):
     log = get_object_or_404(ImportLog, pk=pk)
 
@@ -127,6 +130,7 @@ def import_result(request, pk):
 
 
 @login_required
+@admin_required
 def import_history(request):
     logs = ImportLog.objects.order_by('-created_at')
 
@@ -140,6 +144,7 @@ def import_history(request):
     return render(request, 'imports/history.html', context)
 
 @login_required
+@admin_required
 def upload_sheet(request, sheet_key):
     from .services import (
         SHEET_REGISTRY, validate_single_sheet, import_single_sheet
