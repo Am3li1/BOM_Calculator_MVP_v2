@@ -37,6 +37,7 @@
             action="{% url 'suppliers:supplier_toggle_active' supplier.pk %}"
             class="d-inline">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
         {% if supplier.active %}
           <button type="submit" class="btn btn-outline-warning btn-sm"
                   onclick="return confirm('Deactivate {{ supplier.supplier_name }}?')">

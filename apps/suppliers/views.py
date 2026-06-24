@@ -43,7 +43,8 @@ def supplier_create(request):
                 request,
                 f'Supplier "{supplier.supplier_name}" created.'
             )
-            return redirect('suppliers:supplier_list')
+            next_url = request.POST.get('next')
+            return redirect(next_url if next_url else 'suppliers:supplier_list')
         messages.error(request, 'Please fix the errors below.')
     else:
         form = SupplierForm()
@@ -93,7 +94,8 @@ def supplier_toggle_active(request, pk):
             request,
             f'"{supplier.supplier_name}" {status}.'
         )
-    return redirect('suppliers:supplier_list')
+    next_url = request.POST.get('next')
+    return redirect(next_url if next_url else 'suppliers:supplier_list')
 
 
 # ── Resource-Supplier linking ─────────────────────────────────────────
