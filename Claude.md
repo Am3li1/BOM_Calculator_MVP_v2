@@ -45,13 +45,13 @@ A **Product Costing & Bill of Materials (BOM) Management System** built for furn
 
 ```
 bom_costing/
-├── config/               # Django project config
-│   ├── settings.py       # All settings (decouple for env vars)
-│   ├── urls.py           # Root URL routing
+├── config/
+│   ├── settings.py
+│   ├── urls.py
 │   ├── wsgi.py
 │   └── asgi.py
 ├── apps/
-│   ├── core/             # Dashboard, SystemConfig, template tags
+│   ├── core/             # Dashboard, SystemConfig, decorators, template tags
 │   ├── accounts/         # Login/logout (Django auth, no registration)
 │   ├── products/         # Product CRUD + soft delete + clone
 │   ├── resources/        # Resource CRUD + categories + supplier linking
@@ -59,11 +59,16 @@ bom_costing/
 │   ├── bom/              # BOMItem + WoodPart CRUD
 │   ├── costing/          # Cost sheet views + Excel export
 │   └── imports/          # Excel import service + logs
-├── templates/            # Global templates dir (all HTML here)
-├── static/               # Project static files
-├── media/                # Uploaded files (Excel imports)
-├── build.sh              # Render deploy script
-├── requirements.txt      # Python dependencies
+├── templates/
+│   ├── base.html
+│   ├── 403.html          # Permission denied page
+│   ├── partials/
+│   │   └── pagination.html
+│   └── [app]/
+├── static/
+├── media/
+├── build.sh
+├── requirements.txt
 └── manage.py
 ```
 
@@ -72,70 +77,100 @@ bom_costing/
 ## Application Modules
 
 ### `apps.core`
-- **SystemConfig** — singleton model (pk=1 always). Stores `company_name` and `wood_divisor` (default 144). Call `SystemConfig.get_config()` everywhere.
-- **Dashboard view** — summary counts + recent products/resources.
-- **`custom_filters`** templatetag — `get_item` filter for dict lookups by variable key in templates.
+- **SystemConfig** — singleton model (pk=1). Stores `company_name` and `wood_divisor` (default 144). Call `SystemConfig.get_config()` everywhere.
+- **Dashboard view** — 6 clickable stat cards + recent products/resources tables.
+- **`decorators.py`** — `admin_required` decorator for staff-only views (see Permissions section).
+- **`custom_filters`** templatetag — `get_item` filter for dict lookups by variable key.
 - **`create_default_superuser`** management command.
 
 ### `apps.accounts`
 - Login/logout only. Uses Django's built-in `authenticate`/`login`/`logout`.
 - No user registration, no password reset (MVP).
-- All views behind `@login_required` (set `LOGIN_URL = '/accounts/login/'`).
+- All views behind `@login_required`.
 
 ### `apps.products`
 - **Product** model: `product_name`, `product_code`, `active`, `is_deleted`.
-- **Soft delete** via overridden `.delete()` method — sets `is_deleted=True`.
-- **Product code uniqueness** enforced only among non-deleted records (custom `clean_product_code` in form).
-- **Clone** feature: copies product + all BOMItems + all WoodParts into a new product atomically.
-- Never hard-delete products — historical BOM data would break.
+- Soft delete, product code uniqueness among non-deleted records only.
+- Clone: copies product + all BOMItems + all WoodParts atomically.
 
 ### `apps.resources`
-- **ResourceCategory** — DB-managed categories (not hardcoded). Admin-editable.
+- **ResourceCategory** — DB-managed, admin-editable.
 - **Resource** model: `resource_name`, `category`, `unit`, `rate`, `manual_override_rate`, `override_reason`, `active`.
-- **Rate priority chain** (critical — see Cost Calculation section below).
-- Resources with active BOM/WoodPart references use `PROTECT` — cannot be deleted, only deactivated.
+- Rate priority chain: override → preferred supplier → lowest supplier → master rate.
+- `effective_rate` and `effective_rate_source` properties.
 
 ### `apps.suppliers`
 - **Supplier** model: `supplier_name`, `phone_number`, `gst_number`, `active`.
-- **ResourceSupplier** join table: `resource` FK, `supplier` FK, `supplier_rate`, `preferred`, `active`.
-- Rate lives on `ResourceSupplier` (not on Resource), because the same material has different prices from different suppliers.
-- First supplier linked to a resource is auto-set as `preferred=True`.
-- When preferred supplier is unlinked, cheapest remaining supplier is auto-promoted to preferred.
+- **ResourceSupplier** join table: `resource`, `supplier`, `supplier_rate`, `preferred`, `active`.
+- First supplier linked → auto-preferred. Remove preferred → auto-promote cheapest.
 
 ### `apps.bom`
-- **BOMItem**: product + resource + quantity. Rate/cost NOT stored — always calculated live.
-- **WoodPart**: product + resource + part_name + W/B/H/L/pieces + per-dimension units + formula_type.
-- Two formula types: `standard` (W×B×L×pcs ÷ divisor), `area` (W×L×pcs ÷ divisor). Height is optional.
-- `unique_together = [['product', 'resource']]` on BOMItem — one resource per product in standard BOM.
-- Both `BOMItem.cost` and `WoodPart.cost` use `resource.effective_rate` (confirmed correct).
+- **BOMItem**: product + resource + quantity. Cost calculated live via `effective_rate`.
+- **WoodPart**: product + resource + part_name + W/B/H/L/pieces + formula_type.
+- Formula types: `standard` (W×B×H×L×pcs ÷ divisor), `area` (W×L×pcs ÷ divisor).
+- `unique_together` on BOMItem — one resource per product in standard BOM.
 
 ### `apps.costing`
-- **No models** — pure calculation views.
-- `costing_list`: list of all active products.
-- `cost_sheet`: full cost breakdown per product. Groups BOM items by resource category. Grand total = Standard BOM total ONLY.
-- Dimensions (WoodParts) are shown for reference but NOT added to grand total (their material cost is already in Standard BOM).
-- **Excel export**: per-product at `/costing/<pk>/export/`; full workbook at `/costing/export/full/`.
+- Pure calculation views — no models.
+- `costing_list`: all active products.
+- `cost_sheet`: full cost breakdown grouped by category. Grand total = Standard BOM only.
+- WoodParts shown for reference, NOT added to grand total.
+- Excel export: per-product at `/costing/<pk>/export/`; full workbook at `/costing/export/full/`.
 
 ### `apps.imports`
-- **ImportLog** model — tracks every upload attempt with status, counts, error log. Registered in Django admin as view/delete only (no add, no edit).
-- **Two-phase import**: validate → import. Validation failures never touch the DB.
-- **`services.py`** — all logic here. Validators + importers per sheet. `SHEET_REGISTRY` dict for extensibility.
-- Supports full workbook import OR individual sheet import.
-- Sheets: `Resource`, `Products`, `BOM`, `Wood, Ply MDF`, `Suppliers`.
-- BOM/Wood validators cross-reference Products and Resources from either the same file (full import) or the DB (individual import).
+- **ImportLog** — registered in Django admin as view/delete only (no add/edit).
+- Two-phase import: validate → import atomically.
+- `SHEET_REGISTRY` in `services.py` for extensibility.
+- WoodPart import uses `update_or_create` keyed on `(product, resource, part_name)`.
+
+---
+
+## Permissions
+
+### Two roles — no new models, no migrations needed
+
+| Role | Django field | Access |
+|---|---|---|
+| **Viewer** | `is_staff=False` | Read-only: lists, detail pages, cost sheets, BOM view, import history |
+| **Admin** | `is_staff=True` | Everything: create, edit, delete, toggle, clone, import, supplier linking |
+
+### Decorators
+
+```python
+# apps/core/decorators.py
+from apps.core.decorators import admin_required
+
+# Read-only views — any authenticated user
+@login_required
+def product_list(request): ...
+
+# Mutating views — staff only
+@login_required
+@admin_required          # ← goes BELOW @login_required
+def product_create(request): ...
+```
+
+`@admin_required` raises `PermissionDenied` (→ 403) if `request.user.is_staff` is False.
+`@login_required` must still be present — it handles unauthenticated users before `@admin_required` runs.
+
+### Setting roles
+Via Django admin → Users → edit user → check/uncheck "Staff status".
+
+### 403 page
+`templates/403.html` — rendered automatically by Django on `PermissionDenied`.
 
 ---
 
 ## Critical Business Rules
 
-1. **Cost is never stored.** `BOMItem.cost = quantity × resource.effective_rate`. Changing a resource rate immediately affects all products.
-2. **Grand total = Standard BOM only.** WoodPart entries are dimensional records. Their material cost is already captured in BOM. Adding both would double-count.
-3. **Soft delete products only.** Never call `Product.objects.filter(...).delete()` or SQL DELETE on products.
-4. **Resource uniqueness** = `(resource_name, category)` pair. Same name can exist in different categories.
+1. **Cost is never stored.** `BOMItem.cost = quantity × resource.effective_rate`. Rate changes affect all products immediately.
+2. **Grand total = Standard BOM only.** WoodPart cost is already captured in BOM — adding both double-counts.
+3. **Soft delete products only.** Never hard-delete products.
+4. **Resource uniqueness** = `(resource_name, category)` pair.
 5. **Product code uniqueness** = among non-deleted products only.
-6. **Preferred supplier auto-management**: first link → auto-preferred. Remove preferred → auto-promote cheapest.
-7. **wood_divisor** controls the WoodPart formula. Do not hardcode 144. Always read from `SystemConfig.get_config()`.
-8. **Import is atomic** — if any part of the import fails after validation passes, the entire transaction rolls back.
+6. **Preferred supplier auto-management**: first link → auto-preferred; remove preferred → auto-promote cheapest.
+7. **wood_divisor** — never hardcode 144. Always read from `SystemConfig.get_config()`.
+8. **Import is atomic** — any failure after validation rolls back the entire transaction.
 
 ---
 
@@ -150,142 +185,131 @@ Priority 3: lowest active supplier rate     (cheapest active ResourceSupplier)
 Priority 4: resource.rate                   (master rate — fallback when no suppliers)
 ```
 
-Use `resource.effective_rate` everywhere in costing. Use `resource.effective_rate_source` for UI display showing WHERE the rate comes from.
+Use `resource.effective_rate` everywhere. Use `resource.effective_rate_source` for UI display.
 
 ### BOMItem Cost
 ```python
-cost = bom_item.quantity * resource.effective_rate
+cost = bom_item.quantity * resource.effective_rate  # confirmed correct, tested
 ```
-`BOMItem.cost` correctly uses `resource.effective_rate`. Verified by unit tests.
-
-### WoodPart Calculated Quantity
-```python
-# Standard formula:
-quantity = (W × B × H × L × Pieces) / wood_divisor
-
-# Area formula (when formula_type == 'area'):
-quantity = (W × L × Pieces) / wood_divisor
-```
-H defaults to 1 if 0 or not provided.
 
 ### WoodPart Cost
 ```python
-cost = calculated_quantity * resource.effective_rate
+cost = calculated_quantity * resource.effective_rate  # confirmed correct, tested
 ```
-`WoodPart.cost` correctly uses `resource.effective_rate`. Verified by unit tests.
+
+### WoodPart Calculated Quantity
+```python
+# Standard: quantity = (W × B × H × L × Pieces) / wood_divisor
+# Area:     quantity = (W × L × Pieces) / wood_divisor
+# H defaults to 1 if 0 or not provided
+```
 
 ---
 
 ## Import / Export Rules
 
-### Import (Excel → DB)
+### Import sheet requirements
 
-**Supported sheets and their column requirements:**
-
-| Sheet Name | Required Columns | Notes |
+| Sheet | Required Columns | Notes |
 |---|---|---|
 | `Resource` | Resource, Category, Units, Rate | header row 0 |
 | `Products` | (column A, no header) | skips: column1, products, select, '' |
-| `BOM` | Product, Resource, Quantity | Product column is forward-filled |
-| `Wood, Ply MDF` | Product, Resource, Width, Breath, Length | Note: "Breath" (typo in spec, must match) |
-| `Suppliers` | Supplier Name, Supplier Mobile | header=1 (row 0 is 'Table 1' title) |
+| `BOM` | Product, Resource, Quantity | Product column forward-filled |
+| `Wood, Ply MDF` | Product, Resource, Width, Breath, Length | "Breath" — typo in spec, must match |
+| `Suppliers` | Supplier Name, Supplier Mobile | header=1 (row 0 is 'Table 1') |
 
-**Upsert behaviour (not replace):**
-- Resources: `get_or_create` on (name, category); updates unit/rate if exists.
-- Products: `get_or_create` on code; restores soft-deleted if same code.
-- BOM: `get_or_create` on (product, resource); updates quantity if exists.
-- WoodParts: `update_or_create` on (product, resource, part_name); updates dimensions if exists.
-- Suppliers: `get_or_create` on name; updates phone if exists.
+### Upsert behaviour
 
-**File constraints:** `.xlsx` or `.xls`, max 10MB.
+| Sheet | Key | Behaviour |
+|---|---|---|
+| Resources | (name, category) | updates unit/rate if exists |
+| Products | code | restores soft-deleted if same code |
+| BOM | (product, resource) | updates quantity if exists |
+| WoodParts | (product, resource, part_name) | updates dimensions if exists |
+| Suppliers | name | updates phone if exists |
 
 ### Export
+7-sheet workbook: Products, Resources, Suppliers, SupplierRates, BOM, Dimensions, CostSummary.
 
-Per-product cost sheet export and full 7-sheet workbook export are implemented in `apps/costing/`.
+---
 
-**Full workbook sheets:** Products, Resources, Suppliers, SupplierRates, BOM, Dimensions, CostSummary.
+## Pagination
+
+- Products, Resources, Suppliers: 25 per page
+- Import History: 20 per page
+- Partial: `templates/partials/pagination.html` — include after table, before `{% else %}` empty state
+- Uses `{% query_string page=N %}` to preserve search/filter params across pages
 
 ---
 
 ## Coding Standards
 
-- **Function-based views only.** No class-based views.
-- **`@login_required` on every view** without exception.
-- **POST-only for mutations.** Delete/toggle/link operations must be POST, never GET.
-- **Decimal for all money.** Use `Decimal` not `float` for rates and costs.
-- **`transaction.atomic()`** for multi-model writes (clone, import).
-- **`select_related`** on FKs in list views to avoid N+1 queries.
-- **Bootstrap 5 classes** in templates. Use `form-control`, `form-select`, `btn-*` etc.
-- **`messages` framework** for all user feedback (success/error/info).
-- **App namespace** in every `urls.py` (`app_name = 'xxx'`). Use `{% url 'app:name' %}` in templates.
-- **No hardcoded rates or divisors** — always read from DB.
-- **Template dir is global** (`templates/` in project root), not per-app.
+- **Function-based views only.**
+- **`@login_required` on every view.** Mutating views also get `@admin_required` (below `@login_required`).
+- **POST-only for mutations.** Never GET for delete/toggle/link.
+- **Decimal for all money.**
+- **`transaction.atomic()`** for multi-model writes.
+- **`select_related`** on FKs in list views.
+- **Bootstrap 5** in templates.
+- **`messages` framework** for all user feedback.
+- **App namespace** in every `urls.py`. Use `{% url 'app:name' %}` in templates.
+- **No hardcoded rates or divisors.**
+- **Global template dir** (`templates/` in project root).
 
 ---
 
 ## Testing
 
-- **Test file:** `apps/imports/tests.py`
-- **Run:** `python manage.py test apps.imports.tests` (use full dotted path on Windows)
-- **Current coverage:**
-  - `ImportServicesTests` — `_sheet_exists` closes temp files correctly (SimpleTestCase)
-  - `EffectiveRateTest` — rate priority chain: master rate, preferred supplier, manual override (TestCase)
-  - `BOMItemCostTest` — cost uses master rate with no supplier; cost uses preferred supplier rate (TestCase)
-- **Add tests alongside any new features**, especially before touching cost calculation logic.
+- **Run:** `python manage.py test apps.imports.tests` (full dotted path on Windows)
+- **6 tests passing:**
+  - `ImportServicesTests` — `_sheet_exists` closes temp files
+  - `EffectiveRateTest` — rate priority chain (3 tests)
+  - `BOMItemCostTest` — cost calculation (2 tests)
+- Add tests alongside new features, especially cost calculation changes.
 
 ---
 
 ## Development Constraints
 
-- **SQLite only** for MVP. No PostgreSQL migration yet. Be aware: SQLite has limited concurrent write support.
-- **No async/Celery** — keep everything synchronous. Large imports block the request.
+- **SQLite only** for MVP. Limited concurrent write support.
+- **No async/Celery** — synchronous only.
 - **No REST API** — server-rendered HTML only.
-- **Media files not persisted on Render** — uploads in `media/imports/` are ephemeral.
-- **`staticfiles/` is generated** by `collectstatic`. Do not edit files there.
+- **Media files not persisted on Render.**
+- **`staticfiles/` is generated** — do not edit directly.
 
 ---
 
 ## Deployment Information
 
 - **Platform:** Render (PaaS)
-- **Build command:** `build.sh` (pip install → collectstatic → migrate → createsuperuser)
-- **Database resets on every deploy** (SQLite file in repo — ephemeral). This is a known limitation for MVP.
-- **Static files:** WhiteNoise serves them without Nginx.
-- **Default superuser:** `admin` / `changeme123` — MUST be changed in production.
-- **Environment variables required:**
-  - `SECRET_KEY` — Django secret key
-  - `DEBUG` — `False` in production
-  - `ALLOWED_HOSTS` — comma-separated (e.g. `your-app.onrender.com`)
+- **Build:** `build.sh` (pip install → collectstatic → migrate → createsuperuser)
+- **Database resets on every deploy** — SQLite limitation. MVP only.
+- **Default superuser:** `admin` / `changeme123` — change immediately.
+- **Env vars required:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`
 - **Timezone:** `Asia/Kolkata` (IST)
+- **User roles:** Set `is_staff=True` for admin users in Django admin.
 
 ---
 
 ## Important Warnings
 
-1. **No CSRF protection bypass** — all POST forms must include `{% csrf_token %}`.
-
-2. **ResourceSupplier.supplier_code** property uses `self.pk` (ResourceSupplier PK, not Supplier PK). This is misleading naming — it's a link code, not a supplier code.
-
-3. **No multi-user access control** — all authenticated users have equal access. No role-based permissions.
-
-4. **SQLite in production on Render** — data is lost on every deployment. Move to PostgreSQL before going to real production use.
-
-5. **WoodPart re-import** uses `update_or_create` keyed on `(product, resource, part_name)`. If the Excel has multiple parts for the same product+resource with no part name, they all fall back to the resource name as part_name and will overwrite each other. Ensure the Parts column is populated in the Excel for products with multiple cuts of the same material.
+1. **No CSRF bypass** — all POST forms must include `{% csrf_token %}`.
+2. **`ResourceSupplier.supplier_code`** uses join table PK, not Supplier PK — misleading name.
+3. **SQLite in production on Render** — data lost on every deploy. Move to PostgreSQL before real use.
+4. **WoodPart part_name fallback** — if "Parts" column is empty, falls back to resource name. Multiple cuts of same material for same product will overwrite each other on re-import.
+5. **Portfolio cost on dashboard** — summed in Python, not SQL. Acceptable for MVP; will slow with very large datasets.
 
 ---
 
 ## Future Roadmap
 
-In rough priority order:
-
 1. **PostgreSQL migration** — production data persistence
-2. **Role-based access** (admin vs viewer)
-3. **Supplier: additional fields** — address, email, payment_terms, lead_time_days, last_quoted_at
-4. **ResourceSupplier: stock_available, lead_time_days**
-5. **BOM versioning / history** — track changes over time
-6. **Overhead allocation** — percentage-based overhead on top of direct costs
-7. **User management UI** — add/remove users without Django admin
-8. **Password reset** flow
-9. **Audit trail** — who changed what and when
-10. **Pagination** — all list views
-11. **Bulk operations** — bulk activate/deactivate products/resources
+2. **User management UI** — add/remove users without Django admin
+3. **Password reset flow**
+4. **Overhead allocation** — % overhead on direct costs
+5. **Audit trail** — who changed what and when
+6. **Supplier additional fields** — address, email, payment terms, lead time
+7. **ResourceSupplier fields** — stock_available, lead_time_days
+8. **BOM versioning / history**
+9. **Pagination** ✅ done
+10. **Bulk operations** — bulk activate/deactivate
