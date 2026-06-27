@@ -280,10 +280,10 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 ---
 
 ## Deployment Information
-
-- **Platform:** Render (PaaS)
-- **Build:** `build.sh` (pip install → collectstatic → migrate → createsuperuser)
-- **Database resets on every deploy** — SQLite limitation. MVP only.
+- **Platform:** Hostinger VPS KVM 4 (Ubuntu 24.04 LTS)
+- **Stack:** Nginx → Gunicorn → Django → PostgreSQL
+- **Build:** `build.sh` (pip install → collectstatic → migrate → createsuperuser) — local/CI use only; production uses systemd services
+- **Database:** PostgreSQL — persistent across deploys
 - **Default superuser:** `admin` / `changeme123` — change immediately.
 - **Env vars required:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`
 - **Timezone:** `Asia/Kolkata` (IST)

@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — BOM Costing System
 
 > **Living document.** Update this file whenever major features are completed or the roadmap shifts.
-> Last updated: June 2026 — User Management UI complete
+> Last updated: June 2026 — PostgreSQL migration in progress; Oracle Cloud provisioning pending
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Current Version:** MVP v1.0 — Feature-complete for core BOM costing. In active use/development.
 
-**Overall Health:** Functional and deployed. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete.
+**Overall Health:** Functional and deployed. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration partially complete — code ready, VM provisioning pending.
 
 ---
 
@@ -96,11 +96,37 @@
 
 ---
 
+## In Progress
+
+### PostgreSQL Migration + Hostinger VPS Deployment
+**Status: 🔄 In Progress**
+
+#### Code changes — ✅ Done (local, not yet deployed)
+- `requirements.txt` — added `psycopg2-binary==2.9.10` and `dj-database-url==2.2.0`
+- `config/settings.py` — `DATABASES` now reads `DATABASE_URL` env var; falls back to SQLite locally
+
+#### Infrastructure — ⏳ Next milestone: Purchase Hostinger VPS KVM 4
+- Oracle Cloud Free Tier dropped — capacity issues made provisioning unreliable
+- Target: Hostinger VPS KVM 4, Ubuntu 24.04 LTS
+
+#### Deployment phases (Hostinger)
+| Phase | Task | Status |
+|---|---|---|
+| 1 | Purchase Hostinger VPS KVM 4, select Ubuntu 24.04 LTS | ⏳ Pending |
+| 2 | Secure VM — firewall, SSH hardening, OS updates | ⏳ Pending |
+| 3 | Install PostgreSQL, create DB and user | ⏳ Pending |
+| 4 | Install Python, clone repo, configure Django env vars | ⏳ Pending |
+| 5 | Configure Gunicorn as systemd service | ⏳ Pending |
+| 6 | Configure Nginx as reverse proxy | ⏳ Pending |
+| 7 | Domain + SSL via Let's Encrypt | ⏳ Pending |
+| 8 | Production smoke test | ⏳ Pending |
+
+---
+
 ## Pending Features
 
 | Priority | Feature | File / Location | Notes |
 |---|---|---|---|
-| 🟡 MEDIUM | **PostgreSQL migration** | `config/settings.py`, `requirements.txt`, Render config | SQLite resets on every Render deploy |
 | 🟢 LOW | **Password reset flow** | `apps/accounts/` | No self-service reset yet |
 | 🟢 LOW | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
 | 🟢 LOW | **Audit trail** | New middleware or model mixin | Who changed what and when |
@@ -115,8 +141,8 @@
 ### 🟡 MEDIUM: ResourceSupplier.supplier_code Is Misleading
 Uses join table PK, not Supplier PK. Display-only, low risk.
 
-### 🟢 LOW: SQLite Production Data Loss
-Every Render deployment resets the SQLite database.
+### 🟢 LOW: SQLite Still in Production
+PostgreSQL code is ready but not deployed — still on SQLite until Hostinger VPS is provisioned and configured.
 
 ### 🟢 LOW: No CSRF Audit on Quick-Action Forms
 Inline POST forms should be audited for `{% csrf_token %}` before production.
@@ -140,8 +166,12 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Recent Changes Log
 
+| Jun 2026 | **Deployment target changed** — Oracle Cloud dropped; Hostinger VPS KVM 4 (Ubuntu 24.04) adopted | `PROJECT_STATUS.md`, `CLAUDE.md` |
+
 | Date | Change | Files |
 |---|---|---|
+| Jun 2026 | **PostgreSQL deps added** — `psycopg2-binary`, `dj-database-url` | `requirements.txt` |
+| Jun 2026 | **Settings updated for PostgreSQL** — reads `DATABASE_URL`, SQLite fallback for local dev | `config/settings.py` |
 | Jun 2026 | **User Management UI** — list, create, edit, change password; sidebar link | `apps/accounts/views.py`, `apps/accounts/urls.py`, 3 new templates, `base.html` |
 | Jun 2026 | **Fixed self-deactivation check** — moved inside `if request.method == 'POST'` | `apps/accounts/views.py` |
 | Jun 2026 | **Role-based permissions** — `@admin_required` decorator; 403 template | `apps/core/decorators.py`, all `views.py` files, `templates/403.html` |
@@ -156,14 +186,23 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Deployment Notes
 
-- **Platform:** Render (free tier or standard)
+### Current (Render — being phased out)
+- **Platform:** Render (free tier)
+- **Database:** SQLite — resets on every deploy
 - **Build script:** `build.sh`
-- **Database:** SQLite — resets on every Render deploy
+
+### Target (Hostinger VPS — in progress)
+- **Platform:** Hostinger VPS KVM 4 — Ubuntu 24.04 LTS
+- **Stack:** Nginx → Gunicorn → Django → PostgreSQL (same VM)
+- **SSL:** Let's Encrypt
+- **Database:** PostgreSQL (persistent, no data loss on redeploy)
+
+### Both environments
 - **Default credentials:** `admin` / `changeme123` — change immediately
 - **Timezone:** Asia/Kolkata (IST)
-- **Env vars:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`
+- **Env vars required:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `DATABASE_URL`
 - **User roles:** Set via User Management UI or Django admin → `is_staff` checkbox
-- **Multi-user testing:** Use incognito window for second user — same browser shares session cookies
+- **Multi-user testing:** Use incognito window for second user
 
 ---
 
