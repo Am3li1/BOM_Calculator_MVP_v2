@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Django dev artifacts
+*.log
+local_settings.py
+# db.sqlite3
+db.sqlite3-journal
+
+# Collected static (rebuilt inside the container)
+staticfiles/
+static_root/
+
+# Media uploads (should come from a volume, not the image)
+media/
+
+# Test / coverage
+.coverage
+.pytest_cache/
+htmlcov/
+coverage.xml
+*.cover
+
+# CI / editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker files themselves (no need to copy into the image)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Render-specific
+build.sh
+render.yaml
+
+# Secrets / env files – NEVER bake these into an image
+.env
+.env.*
+!.env.example

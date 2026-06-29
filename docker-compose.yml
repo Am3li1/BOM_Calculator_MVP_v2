@@ -1,0 +1,56 @@
+# docker-compose.yml
+# ─────────────────────────────────────────────
+# Local development mirror of the Coolify setup.
+# SQLite phase: no DB service needed.
+# When you switch to PostgreSQL, uncomment the
+# `db` service and the `depends_on` block.
+# ─────────────────────────────────────────────
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bom_costing:local
+    container_name: bom_costing_web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the SQLite file across container restarts.
+      # Remove this volume when you switch to PostgreSQL.
+      - sqlite_data:/app/db.sqlite3
+
+      # Static files – serves them via a shared volume
+      # so Nginx (if added later) can pick them up.
+      - static_files:/app/staticfiles
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    # ── Uncomment when you add PostgreSQL ──────
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+
+  # ── PostgreSQL (commented out until you're ready) ──
+  # db:
+  #   image: postgres:16-alpine
+  #   container_name: bom_costing_db
+  #   restart: unless-stopped
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   environment:
+  #     POSTGRES_DB: ${POSTGRES_DB:-bom_costing}
+  #     POSTGRES_USER: ${POSTGRES_USER:-django}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-django}"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 10
+
+volumes:
+  sqlite_data:
+  static_files:
+  # postgres_data:    ← uncomment with the db service
