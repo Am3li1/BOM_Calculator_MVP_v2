@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
         # Add a partial unique index that only applies to non-deleted products
         # This allows soft-deleted products to have their codes reused
         migrations.RunSQL(
-            sql='CREATE UNIQUE INDEX products_product_code_unique_active ON products_product(product_code) WHERE is_deleted = 0;',
+            sql='CREATE UNIQUE INDEX products_product_code_unique_active ON products_product(product_code) WHERE is_deleted = FALSE;',
             reverse_sql='DROP INDEX products_product_code_unique_active;',
         ),
     ]
