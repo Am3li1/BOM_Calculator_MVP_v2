@@ -5,8 +5,8 @@ set -euo pipefail
 DATABASE_URL="${DATABASE_URL:-}"
 
 if echo "$DATABASE_URL" | grep -q "^postgres"; then
-    DB_HOST="${DATABASE_HOST:-db}"
-    DB_PORT="${DATABASE_PORT:-5432}"
+    DB_HOST=$(echo "$DATABASE_URL" | sed -E 's|.*@([^:]+):([0-9]+)/.*|\1|')
+    DB_PORT=$(echo "$DATABASE_URL" | sed -E 's|.*@([^:]+):([0-9]+)/.*|\2|')
     MAX_RETRIES=30
     COUNT=0
 
