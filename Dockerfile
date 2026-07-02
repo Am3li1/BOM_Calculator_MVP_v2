@@ -54,7 +54,9 @@ RUN chmod +x /docker-entrypoint.sh
 # Create a non-root user and hand over ownership
 RUN addgroup --system django \
  && adduser --system --ingroup django django \
- && chown -R django:django /app
+ && mkdir -p /app/data \
+ && chown -R django:django /app \
+ && chmod 775 /app/data
 
 USER django
 
