@@ -21,6 +21,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # Locally: localhost,127.0.0.1
 # On Render: your-app.onrender.com
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
 
 # ── Application Definition ───────────────────────────────────────────
