@@ -6,7 +6,7 @@
 <!-- ── Page Header ──────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Products</h5>
+        <h5 class="mb-1 fw-bold" style="color:var(--text);">Products</h5>
         <p class="text-muted mb-0" style="font-size:0.85rem;">
             Manage your product catalogue.
             <strong>{{ total_count }}</strong> record{{ total_count|pluralize }} found.
@@ -23,11 +23,11 @@
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-12 col-md-5">
                 <label class="form-label mb-1"
-                       style="font-size:0.78rem;font-weight:600;color:#6c757d;">
+                       style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">
                     SEARCH
                 </label>
                 <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-white">
+                    <span class="input-group-text" style="background:var(--surface-raised); border-color:var(--border);">
                         <i class="bi bi-search text-muted"></i>
                     </span>
                     <input type="text" name="search" class="form-control"
@@ -37,7 +37,7 @@
             </div>
             <div class="col-6 col-md-3">
                 <label class="form-label mb-1"
-                       style="font-size:0.78rem;font-weight:600;color:#6c757d;">
+                       style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">
                     STATUS
                 </label>
                 <select name="status" class="form-select form-select-sm">
@@ -87,8 +87,8 @@
 
                         <!-- Code -->
                         <td class="ps-4">
-                            <code style="font-size:0.82rem; background:#f0f0ff;
-                                         color:#6366f1; padding:2px 8px;
+                            <code class="font-mono" style="font-size:0.82rem; background:var(--surface-raised);
+                                         color:var(--accent); padding:2px 8px;
                                          border-radius:4px;">
                                 {{ product.product_code }}
                             </code>
@@ -112,16 +112,14 @@
 
                         <!-- BOM Count -->
                         <td class="text-center">
-                            <span class="badge bg-light text-dark border"
-                                  style="font-size:0.75rem;">
+                            <span class="badge font-mono" style="font-size:0.75rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                                 {{ product.bom_items.count }}
                             </span>
                         </td>
 
                         <!-- Wood Parts Count -->
                         <td class="text-center">
-                            <span class="badge bg-light text-dark border"
-                                  style="font-size:0.75rem;">
+                            <span class="badge font-mono" style="font-size:0.75rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                                 {{ product.wood_parts.count }}
                             </span>
                         </td>
@@ -181,7 +179,7 @@
                                 <div class="modal-body"
                                      style="font-size:0.875rem;">
                                     <p>You are about to remove:</p>
-                                    <div class="bg-light rounded p-2 mb-2">
+                                    <div class="rounded p-2 mb-2" style="background:var(--surface-raised); border:1px solid var(--border);">
                                         <strong>{{ product.product_code }}</strong>
                                         — {{ product.product_name }}
                                     </div>

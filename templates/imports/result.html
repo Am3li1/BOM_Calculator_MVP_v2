@@ -5,7 +5,7 @@
 <!-- ── Header ───────────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">
+        <h5 class="mb-1 fw-bold" style="color:var(--text);">
             Import Result
         </h5>
         <p class="text-muted mb-0" style="font-size:0.85rem;">
@@ -13,7 +13,7 @@
             · {{ log.created_at|date:"d M Y H:i" }}
             · {{ log.uploaded_by.username }}
             {% if log.import_type != 'full' %}
-            · <span class="badge bg-light text-dark border"
+            · <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                     style="font-size:0.72rem;">
                 {{ log.import_type|upper }}
               </span>
@@ -38,14 +38,14 @@
     <div class="d-flex align-items-center gap-3">
 
         {% if log.status == 'success' %}
-        <div style="width:48px;height:48px;background:#d1fae5;
+        <div style="width:48px;height:48px;background:var(--success-bg);
                     border-radius:12px;display:flex;
                     align-items:center;justify-content:center;
                     font-size:1.5rem;">
             <i class="bi bi-check-circle-fill text-success"></i>
         </div>
         <div>
-            <div class="fw-bold" style="color:#1a1f3a;font-size:1rem;">
+            <div class="fw-bold" style="color:var(--text);font-size:1rem;">
                 Import Successful
             </div>
             <div class="text-muted" style="font-size:0.85rem;">
@@ -54,7 +54,7 @@
         </div>
 
         {% elif log.status == 'validation_failed' %}
-        <div style="width:48px;height:48px;background:#fee2e2;
+        <div style="width:48px;height:48px;background:var(--danger-bg);
                     border-radius:12px;display:flex;
                     align-items:center;justify-content:center;
                     font-size:1.5rem;">
@@ -62,7 +62,7 @@
         </div>
         <div>
             <div class="fw-bold"
-                 style="color:#dc3545;font-size:1rem;">
+                 style="color:var(--danger);font-size:1rem;">
                 Validation Failed — No Data Imported
             </div>
             <div class="text-muted" style="font-size:0.85rem;">
@@ -73,7 +73,7 @@
         </div>
 
         {% elif log.status == 'partial' %}
-        <div style="width:48px;height:48px;background:#fef3c7;
+        <div style="width:48px;height:48px;background:var(--warning-bg);
                     border-radius:12px;display:flex;
                     align-items:center;justify-content:center;
                     font-size:1.5rem;">
@@ -82,7 +82,7 @@
         </div>
         <div>
             <div class="fw-bold"
-                 style="color:#1a1f3a;font-size:1rem;">
+                 style="color:var(--text);font-size:1rem;">
                 Partial Import
             </div>
             <div class="text-muted" style="font-size:0.85rem;">
@@ -93,7 +93,7 @@
         </div>
 
         {% else %}
-        <div style="width:48px;height:48px;background:#fee2e2;
+        <div style="width:48px;height:48px;background:var(--danger-bg);
                     border-radius:12px;display:flex;
                     align-items:center;justify-content:center;
                     font-size:1.5rem;">
@@ -101,7 +101,7 @@
         </div>
         <div>
             <div class="fw-bold"
-                 style="color:#dc3545;font-size:1rem;">
+                 style="color:var(--danger);font-size:1rem;">
                 Import Failed
             </div>
             <div class="text-muted" style="font-size:0.85rem;">
@@ -167,7 +167,7 @@
     <div class="card-header d-flex justify-content-between
                 align-items-center"
          {% if log.status == 'validation_failed' %}
-         style="background:#fff5f5;"
+         style="background:var(--danger-bg);"
          {% endif %}>
         <span>
             {% if log.status == 'validation_failed' %}
@@ -189,22 +189,22 @@
         {% endif %}
     </div>
     <div class="p-4">
-        <div style="background:#fafafa;border-radius:8px;
-                    border:1px solid #f0f0f0;padding:16px;
-                    max-height:500px;overflow-y:auto;">
+        <div style="background:var(--surface-raised);border-radius:8px;
+            border:1px solid var(--border);padding:16px;
+            max-height:500px;overflow-y:auto;">
             {% for error in errors %}
-            <div style="font-size:0.8rem;font-family:monospace;
-                        padding:4px 0;
-                        border-bottom:1px solid #f5f5f5;
-                        color:#dc3545;">
+            <div class="font-mono" style="font-size:0.8rem;
+                padding:4px 0;
+                border-bottom:1px solid var(--border);
+                color:var(--danger);">
                 <i class="bi bi-x-circle me-1"></i>{{ error }}
             </div>
             {% endfor %}
         </div>
         {% if log.status == 'validation_failed' %}
         <div class="mt-3 p-3"
-             style="background:#fff8e1;border-radius:8px;
-                    border:1px solid #ffe082;
+             style="background:var(--warning-bg);border-radius:8px;
+             border:1px solid var(--warning-border);
                     font-size:0.82rem;">
             <i class="bi bi-lightbulb me-1 text-warning"></i>
             <strong>How to fix:</strong>
@@ -222,7 +222,7 @@
 {% if log.status == 'success' %}
 <div class="content-card p-4">
     <div class="fw-semibold mb-3"
-         style="font-size:0.9rem;color:#1a1f3a;">
+         style="font-size:0.9rem;color:var(--text);">
         What would you like to do next?
     </div>
     <div class="d-flex gap-2 flex-wrap">

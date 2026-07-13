@@ -4,16 +4,27 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Cost Sheets</h5>
+        <h5 class="mb-1 fw-bold" style="color:var(--text);">Cost Sheets</h5>
         <p class="text-muted mb-0" style="font-size:0.85rem;">
             Select a product to view its full cost breakdown.
             <strong>{{ products|length }}</strong> product{{ products|length|pluralize }} found.
         </p>
     </div>
-    <a href="{% url 'costing:export_full' %}"
-       class="btn btn-success btn-sm">
-        <i class="bi bi-download me-1"></i> Export Full Workbook
-    </a>
+    <div class="d-flex align-items-center gap-4">
+        <div class="text-end">
+            <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600;
+                        text-transform:uppercase; letter-spacing:0.5px;">
+                Total Portfolio Cost
+            </div>
+            <div class="font-mono" style="font-size:1.3rem; font-weight:700; color:var(--text);">
+                ₹{{ portfolio_total|floatformat:2 }}
+            </div>
+        </div>
+        <a href="{% url 'costing:export_full' %}"
+           class="btn btn-success btn-sm">
+            <i class="bi bi-download me-1"></i> Export Full Workbook
+        </a>
+    </div>
 </div>
 
 <!-- ── Search Filter ─────────────────────────────────────────────── -->
@@ -22,11 +33,11 @@
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-12 col-md-6">
                 <label class="form-label mb-1"
-                       style="font-size:0.78rem;font-weight:600;color:#6c757d;">
+                       style="font-size:0.78rem;font-weight:600;color:var(--text-muted);">
                     SEARCH
                 </label>
                 <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-white">
+                    <span class="input-group-text" style="background:var(--surface-raised); border-color:var(--border);">
                         <i class="bi bi-search text-muted"></i>
                     </span>
                     <input type="text"
@@ -60,6 +71,7 @@
                 <th>Product Name</th>
                 <th class="text-center">BOM Items</th>
                 <th class="text-center">Dimensions</th>
+                <th class="text-end">Total Cost</th>
                 <th class="text-end pe-4">Action</th>
             </tr>
         </thead>
@@ -67,24 +79,27 @@
             {% for product in products %}
             <tr>
                 <td class="ps-4">
-                    <code style="font-size:0.82rem; background:#f0f0ff;
-                                 color:#6366f1; padding:2px 8px;
-                                 border-radius:4px;">
+                    <code class="font-mono" style="font-size:0.82rem; background:var(--surface-raised);
+                          color:var(--accent); padding:2px 8px;
+                          border-radius:4px;">
                         {{ product.product_code }}
                     </code>
                 </td>
                 <td>{{ product.product_name }}</td>
                 <td class="text-center">
-                    <span class="badge bg-light text-dark border"
+                    <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                           style="font-size:0.75rem;">
                         {{ product.bom_items.count }}
                     </span>
                 </td>
                 <td class="text-center">
-                    <span class="badge bg-light text-dark border"
+                    <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                           style="font-size:0.75rem;">
                         {{ product.wood_parts.count }}
                     </span>
+                </td>
+                <td class="text-end font-mono">
+                    ₹{{ product.total_cost|floatformat:2 }}
                 </td>
                 <td class="text-end pe-4">
                     <a href="{% url 'costing:sheet' product_pk=product.pk %}"

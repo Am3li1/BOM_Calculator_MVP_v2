@@ -6,7 +6,7 @@
 <div class="content-card p-4 mb-4">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <h5 class="mb-1" style="color:#1a1f3a; font-weight:700;">
+            <h5 class="mb-1" style="color:var(--text); font-weight:700;">
                 {{ product.product_code }}
             </h5>
             <div class="text-muted" style="font-size:0.9rem;">
@@ -27,13 +27,12 @@
         <span>
             <i class="bi bi-diagram-3 me-2 text-warning"></i>
             Standard BOM
-            <span class="badge bg-light text-dark border ms-1"
-                  style="font-size:0.75rem;">
+            <span class="badge ms-1" style="font-size:0.75rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                 {{ bom_items.count }} item{{ bom_items.count|pluralize }}
             </span>
         </span>
         <div class="d-flex align-items-center gap-3">
-            <strong style="color:#1a1f3a;">
+            <strong class="font-mono" style="color:var(--text);">
                 Total: ₹{{ total_bom_cost|floatformat:2 }}
             </strong>
             <a href="{% url 'bom:add' product_pk=product.pk %}"
@@ -61,8 +60,7 @@
             <tr>
                 <td class="ps-4">{{ item.resource.resource_name }}</td>
                 <td>
-                    <span class="badge bg-light text-dark border"
-                          style="font-size:0.7rem;">
+                    <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                         {{ item.resource.category }}
                     </span>
                 </td>
@@ -117,13 +115,13 @@
             {% endfor %}
         </tbody>
         <tfoot>
-            <tr style="background:#f8f9fa;">
+            <tr style="background:var(--surface-raised);">
                 <td colspan="5"
                     class="ps-4 fw-semibold text-end pe-3">
                     Standard BOM Total
                 </td>
                 <td class="text-end fw-bold"
-                    style="color:#1a1f3a; font-size:1rem;">
+                    style="color:var(--text); font-size:1rem;">
                     ₹{{ total_bom_cost|floatformat:2 }}
                 </td>
                 <td></td>
@@ -152,8 +150,7 @@
         <span>
             <i class="bi bi-rulers me-2 text-info"></i>
             Dimensions
-            <span class="badge bg-light text-dark border ms-1"
-                  style="font-size:0.75rem;">
+            <span class="badge ms-1" style="font-size:0.75rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                 {{ wood_parts.count }} part{{ wood_parts.count|pluralize }}
             </span>
         </span>
@@ -168,6 +165,7 @@
     <table class="table table-hover mb-0">
         <thead>
             <tr>
+
                 <th>Material</th>
                 <th class="text-end">Width</th>
                 <th class="text-end">Breadth</th>
@@ -180,12 +178,11 @@
         <tbody>
             {% regroup wood_parts by part as part_groups %}
             {% for group in part_groups %}
-            <tr class="table-light">
+            <tr style="background:var(--surface-raised);">
                 <td colspan="7" class="ps-4 fw-semibold" style="font-size:0.85rem;">
                     <i class="bi bi-box-seam me-1 text-muted"></i>
                     {{ group.grouper.name|default:"Ungrouped" }}
-                    <span class="badge bg-light text-dark border ms-1"
-                          style="font-size:0.7rem;">
+                    <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                         {{ group.list|length }} item{{ group.list|length|pluralize }}
                     </span>
                 </td>
@@ -196,8 +193,7 @@
                     <i class="bi bi-arrow-return-right me-1"></i>
                 </td>
                 <td>
-                    <span class="badge bg-light text-dark border"
-                          style="font-size:0.7rem;">
+                    <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                         {{ part.resource.resource_name }}
                     </span>
                 </td>
@@ -268,7 +264,7 @@
 <div class="content-card p-4">
     <div class="d-flex justify-content-between align-items-center">
         <div>
-            <div style="font-size:0.8rem; color:#6c757d; font-weight:600;
+            <div style="font-size:0.8rem; color:var(--text-muted); font-weight:600;
                         text-transform:uppercase; letter-spacing:0.5px;">
                 Total Product Cost
             </div>
@@ -276,7 +272,7 @@
                 Standard BOM only · Dimensions are for reference
             </div>
         </div>
-        <div style="font-size:1.5rem; font-weight:700; color:#1a1f3a;">
+        <div class="font-mono" style="font-size:1.5rem; font-weight:700; color:var(--text);">
             ₹{{ grand_total|floatformat:2 }}
         </div>
     </div>

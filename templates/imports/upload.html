@@ -7,7 +7,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#dc3545;">
+        <h5 class="mb-1 fw-bold" style="color:var(--danger);">
             <i class="bi bi-x-circle-fill me-2"></i>
             Import Blocked — Validation Failed
         </h5>
@@ -27,16 +27,16 @@
 
 <!-- Summary banner -->
 <div class="content-card p-4 mb-4"
-     style="border-left:4px solid #dc3545;">
+     style="border-left:4px solid var(--danger);">
     <div class="d-flex align-items-center gap-3">
-        <div style="width:48px;height:48px;background:#fee2e2;
+        <div style="width:48px;height:48px;background:var(--danger-bg);
                     border-radius:12px;display:flex;
                     align-items:center;justify-content:center;
                     font-size:1.5rem;flex-shrink:0;">
             <i class="bi bi-shield-x text-danger"></i>
         </div>
         <div>
-            <div class="fw-bold" style="color:#dc3545;">
+            <div class="fw-bold" style="color:var(--danger);">
                 No data was imported.
             </div>
             <div class="text-muted" style="font-size:0.85rem;">
@@ -56,7 +56,7 @@
 <div class="content-card mb-3">
     <div class="card-header d-flex justify-content-between
                 align-items-center"
-         style="background:#fff5f5;">
+         style="background:var(--danger-bg);">
         <span>
             <i class="bi bi-table me-2 text-danger"></i>
             Sheet: <strong>{{ sheet_group.grouper }}</strong>
@@ -70,7 +70,7 @@
     <div class="p-0">
         <table class="table table-sm mb-0">
             <thead>
-                <tr style="background:#fafafa;">
+                <tr style="background:var(--surface-raised);">
                     <th class="ps-4"
                         style="width:80px;">Row</th>
                     <th>Error</th>
@@ -81,11 +81,11 @@
                 <tr>
                     <td class="ps-4"
                         style="font-size:0.82rem;
-                               color:#6c757d;">
+                               color:var(--text-muted);">
                         {{ error.row }}
                     </td>
                     <td style="font-size:0.82rem;
-                                color:#dc3545;">
+                                color:var(--danger);">
                         <i class="bi bi-exclamation-circle
                                    me-1"></i>
                         {{ error.message }}
@@ -101,11 +101,11 @@
 <!-- Instructions -->
 <div class="content-card p-4 mt-4">
     <div class="fw-semibold mb-2"
-         style="color:#1a1f3a;">
+         style="color:var(--text);">
         How to fix this:
     </div>
     <ol style="font-size:0.85rem;
-               color:#344054;
+               color:var(--text);
                margin-bottom:0;
                padding-left:1.2rem;">
         <li>Open your Excel workbook.</li>
@@ -154,9 +154,9 @@
 
                     <!-- Expected sheets -->
                     <div class="mb-4 p-3"
-                         style="background:#f8f9fa;
+                         style="background:var(--surface-raised);
                                 border-radius:8px;
-                                border:1px solid #e9ecef;">
+                                border:1px solid var(--border);">
                         <div class="fw-semibold mb-2"
                              style="font-size:0.85rem;">
                             Expected sheets:
@@ -205,12 +205,12 @@
                 <a href="{% url 'imports:result' pk=log.pk %}"
                    class="list-group-item list-group-item-action"
                    style="font-size:0.82rem;
-                          border-color:#f0f0f0;">
+                          border-color:var(--border);">
                     <div class="d-flex justify-content-between
                                 align-items-start">
                         <div>
                             <div class="fw-semibold"
-                                 style="color:#1a1f3a;">
+                                 style="color:var(--text);">
                                 {{ log.file_name }}
                             </div>
                             <div class="text-muted"
@@ -267,9 +267,9 @@
 
             <div class="col-12 col-md-6">
                 <div class="p-3"
-                     style="background:#f8f9fa;
+                     style="background:var(--surface-raised);
                             border-radius:8px;
-                            border:1px solid #e9ecef;">
+                            border:1px solid var(--border);">
                     <div class="fw-semibold mb-1"
                          style="font-size:0.875rem;">
                         <i class="bi bi-collection me-2
@@ -292,9 +292,9 @@
 
             <div class="col-12 col-md-6">
                 <div class="p-3"
-                     style="background:#f8f9fa;
+                     style="background:var(--surface-raised);
                             border-radius:8px;
-                            border:1px solid #e9ecef;">
+                            border:1px solid var(--border);">
                     <div class="fw-semibold mb-1"
                          style="font-size:0.875rem;">
                         <i class="bi bi-box me-2
@@ -316,9 +316,9 @@
 
             <div class="col-12 col-md-6">
                 <div class="p-3"
-                     style="background:#f8f9fa;
+                     style="background:var(--surface-raised);
                             border-radius:8px;
-                            border:1px solid #e9ecef;">
+                            border:1px solid var(--border);">
                     <div class="fw-semibold mb-1"
                          style="font-size:0.875rem;">
                         <i class="bi bi-truck me-2 text-secondary"></i>
@@ -341,9 +341,9 @@
 
             <div class="col-12 col-md-6">
                 <div class="p-3"
-                     style="background:#f8f9fa;
+                     style="background:var(--surface-raised);
                             border-radius:8px;
-                            border:1px solid #e9ecef;">
+                            border:1px solid var(--border);">
                     <div class="fw-semibold mb-1"
                          style="font-size:0.875rem;">
                         <i class="bi bi-diagram-3 me-2
@@ -368,9 +368,9 @@
 
             <div class="col-12 col-md-6">
                 <div class="p-3"
-                     style="background:#f8f9fa;
+                     style="background:var(--surface-raised);
                             border-radius:8px;
-                            border:1px solid #e9ecef;">
+                            border:1px solid var(--border);">
                     <div class="fw-semibold mb-1"
                          style="font-size:0.875rem;">
                         <i class="bi bi-rulers me-2

@@ -35,7 +35,7 @@
 <!-- ── Print Button ──────────────────────────────────────────────── -->
 <div class="d-flex justify-content-between align-items-center mb-4 no-print">
     <div>
-        <h5 class="mb-1 fw-bold" style="color:#1a1f3a;">Cost Sheet</h5>
+        <h5 class="mb-1 fw-bold" style="color:var(--text);">Cost Sheet</h5>
         <p class="text-muted mb-0" style="font-size:0.85rem;">
             All costs calculated live from current resource rates.
         </p>
@@ -57,29 +57,139 @@
 <div class="content-card p-4 mb-4">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <div style="font-size:0.75rem; color:#6c757d; font-weight:600;
+            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600;
                         text-transform:uppercase; letter-spacing:0.5px;">
                 Product
             </div>
-            <h4 class="mb-0 fw-bold" style="color:#1a1f3a;">
+            <h4 class="mb-0 fw-bold" style="color:var(--text);">
                 {{ product.product_name }}
             </h4>
-            <code style="font-size:0.9rem; color:#6366f1;">
+            <code class="font-mono" style="font-size:0.9rem; color:var(--accent);">
                 {{ product.product_code }}
             </code>
         </div>
         <div class="text-end">
-            <div style="font-size:0.75rem; color:#6c757d; font-weight:600;
+            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600;
                         text-transform:uppercase; letter-spacing:0.5px;">
                 Total Cost
             </div>
-            <div style="font-size:2rem; font-weight:700; color:#1a1f3a;">
+            <div class="font-mono" style="font-size:2rem; font-weight:700; color:var(--text);">
                 ₹{{ grand_total|floatformat:2 }}
             </div>
         </div>
     </div>
 </div>
 
+<!-- ── Category Summary with Pie Chart ──────────────────────────── -->
+{% if category_summary %}
+
+<!-- Pass Python data safely to JavaScript using json_script.      -->
+<!-- json_script escapes HTML characters to prevent XSS attacks.   -->
+{{ category_summary|json_script:"category-data" }}
+
+<div class="content-card mb-4">
+    <div class="card-header">
+        <i class="bi bi-pie-chart-fill me-2 text-primary"></i>
+        Category-wise Cost Breakdown
+    </div>
+
+    <div class="row g-0">
+
+        <!-- Left: Pie Chart -->
+        <div class="col-12 col-md-5 d-flex align-items-center
+                    justify-content-center p-4"
+             style="border-right: 1px solid var(--border);">
+            <div style="position:relative; width:100%; max-width:280px;">
+                <canvas id="costPieChart"></canvas>
+                <!-- Grand total shown in centre via CSS -->
+                <div style="position:absolute; top:50%; left:50%;
+                            transform:translate(-50%,-50%);
+                            text-align:center; pointer-events:none;">
+                    <div style="font-size:0.72rem; color:var(--text-muted);
+                                font-weight:600; text-transform:uppercase;
+                                letter-spacing:0.5px;">
+                        Total
+                    </div>
+                    <div class="font-mono" style="font-size:1rem; font-weight:700;
+                         color:var(--text);">
+                        ₹{{ grand_total|floatformat:0 }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Summary Table -->
+        <div class="col-12 col-md-7">
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">Category</th>
+                        <th class="text-end">Cost (₹)</th>
+                        <th class="text-end pe-4">Share</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in category_summary %}
+                    <tr>
+                        <td class="ps-4">
+                            <!-- Colour dot matches pie chart segment -->
+                            <span class="category-dot"
+                                  data-index="{{ forloop.counter0 }}"
+                                  style="display:inline-block;
+                                         width:10px; height:10px;
+                                         border-radius:50%;
+                                         margin-right:8px;
+                                         background:var(--border);">
+                            </span>
+                            {{ row.category }}
+                        </td>
+                        <td class="text-end fw-semibold">
+                            {{ row.total|floatformat:2 }}
+                        </td>
+                        <td class="text-end pe-4">
+                            <!-- Progress bar showing percentage -->
+                            <div class="d-flex align-items-center
+                                        gap-2 justify-content-end">
+                                <div style="width:60px; height:6px;
+                                            background:var(--surface-raised);
+                                            border-radius:3px;
+                                            overflow:hidden;">
+                                    <div class="percentage-bar"
+                                         data-index="{{ forloop.counter0 }}"
+                                         style="height:100%;
+                                                width:{{ row.percentage }}%;
+                                                background:var(--accent);
+                                                border-radius:3px;">
+                                    </div>
+                                </div>
+                                <span style="font-size:0.82rem;
+                                             color:var(--text-muted);
+                                             min-width:38px;
+                                             text-align:right;">
+                                    {{ row.percentage }}%
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="background:var(--surface-raised);
+                                border-top:2px solid var(--border);">
+                        <td class="ps-4 fw-bold">Grand Total</td>
+                        <td class="text-end fw-bold"
+                            style="font-size:1rem; color:var(--text);">
+                            ₹{{ grand_total|floatformat:2 }}
+                        </td>
+                        <td class="text-end pe-4 fw-bold">100%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+    </div>
+</div>
+{% endif %}
 
 <!-- ── Standard BOM Breakdown ──────────────────────────────────── -->
 {% if bom_by_category %}
@@ -91,14 +201,14 @@
 
     {% for category, items in bom_by_category.items %}
     <div class="px-4 pt-3 pb-1">
-        <div style="font-size:0.72rem; font-weight:700; color:#6c757d;
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted);
                     text-transform:uppercase; letter-spacing:1px;">
             {{ category }}
         </div>
     </div>
     <table class="table table-sm mb-0">
         <thead>
-            <tr style="background:#fafafa;">
+            <tr style="background:var(--surface-raised);">
                 <th class="ps-4">Resource</th>
                 <th class="text-end">Qty</th>
                 <th class="text-end">Unit</th>
@@ -126,10 +236,10 @@
             {% endfor %}
         </tbody>
         <tfoot>
-            <tr style="background:#f8f9fa;">
+            <tr style="background:var(--surface-raised);">
                 <td colspan="4"
                     class="ps-4 text-end fw-semibold"
-                    style="font-size:0.8rem; color:#6c757d;">
+                    style="font-size:0.8rem; color:var(--text-muted);">
                     {{ category }} subtotal
                 </td>
                 <td class="text-end pe-4 fw-bold">
@@ -138,15 +248,15 @@
             </tr>
         </tfoot>
     </table>
-    <hr class="my-0" style="border-color:#f0f0f0;">
+    <hr class="my-0" style="border-color:var(--border);">
     {% endfor %}
 
     <div class="d-flex justify-content-between align-items-center
                 px-4 py-3"
-         style="background:#f8f9fa; border-top:2px solid #e9ecef;">
+         style="background:var(--surface-raised); border-top:2px solid var(--border);">
         <span class="fw-semibold">Standard BOM Total</span>
-        <span class="fw-bold"
-              style="font-size:1.1rem; color:#1a1f3a;">
+        <span class="fw-bold font-mono"
+            style="font-size:1.1rem; color:var(--text);">
             ₹{{ grand_total|floatformat:2 }}
         </span>
     </div>
@@ -170,14 +280,14 @@
 
     {% for category, parts in wood_by_category.items %}
     <div class="px-4 pt-3 pb-1">
-        <div style="font-size:0.72rem; font-weight:700; color:#6c757d;
+        <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted);
                     text-transform:uppercase; letter-spacing:1px;">
             {{ category }}
         </div>
     </div>
     <table class="table table-sm mb-0">
         <thead>
-            <tr style="background:#fafafa;">
+            <tr style="background:var(--surface-raised);">
                 <th class="ps-4">Part Name</th>
                 <th class="text-end">Width</th>
                 <th class="text-end">Breadth</th>
@@ -229,12 +339,12 @@
             {% endfor %}
         </tbody>
     </table>
-    <hr class="my-0" style="border-color:#f0f0f0;">
+    <hr class="my-0" style="border-color:var(--border);">
     {% endfor %}
 
     <div class="px-4 py-3"
-         style="background:#f8f9fa; border-top:1px solid #e9ecef;">
-        <span style="font-size:0.8rem; color:#6c757d;">
+         style="background:var(--surface-raised); border-top:1px solid var(--border);">
+        <span style="font-size:0.8rem; color:var(--text-muted);">
             <i class="bi bi-info-circle me-1"></i>
             Dimension costs are included in the Standard BOM above.
             This section shows physical measurements only.
@@ -242,119 +352,6 @@
     </div>
 </div>
 {% endif %}
-
-
-<!-- ── Category Summary with Pie Chart ──────────────────────────── -->
-{% if category_summary %}
-
-<!-- Pass Python data safely to JavaScript using json_script.      -->
-<!-- json_script escapes HTML characters to prevent XSS attacks.   -->
-{{ category_summary|json_script:"category-data" }}
-
-<div class="content-card mb-4">
-    <div class="card-header">
-        <i class="bi bi-pie-chart-fill me-2 text-primary"></i>
-        Category-wise Cost Breakdown
-    </div>
-
-    <div class="row g-0">
-
-        <!-- Left: Pie Chart -->
-        <div class="col-12 col-md-5 d-flex align-items-center
-                    justify-content-center p-4"
-             style="border-right: 1px solid #f0f0f0;">
-            <div style="position:relative; width:100%; max-width:280px;">
-                <canvas id="costPieChart"></canvas>
-                <!-- Grand total shown in centre via CSS -->
-                <div style="position:absolute; top:50%; left:50%;
-                            transform:translate(-50%,-50%);
-                            text-align:center; pointer-events:none;">
-                    <div style="font-size:0.72rem; color:#6c757d;
-                                font-weight:600; text-transform:uppercase;
-                                letter-spacing:0.5px;">
-                        Total
-                    </div>
-                    <div style="font-size:1rem; font-weight:700;
-                                color:#1a1f3a;">
-                        ₹{{ grand_total|floatformat:0 }}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right: Summary Table -->
-        <div class="col-12 col-md-7">
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th class="ps-4">Category</th>
-                        <th class="text-end">Cost (₹)</th>
-                        <th class="text-end pe-4">Share</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in category_summary %}
-                    <tr>
-                        <td class="ps-4">
-                            <!-- Colour dot matches pie chart segment -->
-                            <span class="category-dot"
-                                  data-index="{{ forloop.counter0 }}"
-                                  style="display:inline-block;
-                                         width:10px; height:10px;
-                                         border-radius:50%;
-                                         margin-right:8px;
-                                         background:#e9ecef;">
-                            </span>
-                            {{ row.category }}
-                        </td>
-                        <td class="text-end fw-semibold">
-                            {{ row.total|floatformat:2 }}
-                        </td>
-                        <td class="text-end pe-4">
-                            <!-- Progress bar showing percentage -->
-                            <div class="d-flex align-items-center
-                                        gap-2 justify-content-end">
-                                <div style="width:60px; height:6px;
-                                            background:#f0f0f0;
-                                            border-radius:3px;
-                                            overflow:hidden;">
-                                    <div class="percentage-bar"
-                                         data-index="{{ forloop.counter0 }}"
-                                         style="height:100%;
-                                                width:{{ row.percentage }}%;
-                                                background:#6366f1;
-                                                border-radius:3px;">
-                                    </div>
-                                </div>
-                                <span style="font-size:0.82rem;
-                                             color:#6c757d;
-                                             min-width:38px;
-                                             text-align:right;">
-                                    {{ row.percentage }}%
-                                </span>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr style="background:#f8f9fa;
-                                border-top:2px solid #e9ecef;">
-                        <td class="ps-4 fw-bold">Grand Total</td>
-                        <td class="text-end fw-bold"
-                            style="font-size:1rem; color:#1a1f3a;">
-                            ₹{{ grand_total|floatformat:2 }}
-                        </td>
-                        <td class="text-end pe-4 fw-bold">100%</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-
-    </div>
-</div>
-{% endif %}
-
 
 <!-- ── Empty state ──────────────────────────────────────────────── -->
 {% if not bom_by_category and not wood_by_category %}
@@ -398,7 +395,7 @@
     // A professional set of colours that work well together.
     // Cycles through the list if there are more categories than colours.
     const PALETTE = [
-        '#6366f1',  // indigo
+        '#2F7DFF',  // indigo
         '#f59e0b',  // amber
         '#10b981',  // emerald
         '#ef4444',  // red
@@ -425,7 +422,7 @@
             datasets: [{
                 data:            values,
                 backgroundColor: colours,
-                borderColor:     '#ffffff',
+                borderColor:     getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(),
                 borderWidth:     2,
                 hoverOffset:     6,
             }]

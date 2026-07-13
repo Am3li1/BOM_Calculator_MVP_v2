@@ -206,7 +206,7 @@
 
                   <td>
                     {% if link.resource.category %}
-                      <span class="badge bg-light text-dark border">{{ link.resource.category }}</span>
+                      <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">{{ link.resource.category }}</span>
                     {% else %}
                       <span class="text-muted fst-italic">—</span>
                     {% endif %}

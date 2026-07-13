@@ -15,7 +15,7 @@
                         <div class="stat-value">{{ total_products }}</div>
                         <div class="stat-label mt-1">Active Products</div>
                     </div>
-                    <div class="stat-icon" style="background:#eef2ff;color:#6366f1;">
+                    <div class="stat-icon" style="background:rgba(47,125,255,0.15);color:#2F7DFF;">
                         <i class="bi bi-box"></i>
                     </div>
                 </div>
@@ -32,7 +32,8 @@
                         <div class="stat-value">{{ total_resources }}</div>
                         <div class="stat-label mt-1">Active Resources</div>
                     </div>
-                    <div class="stat-icon" style="background:#f0fdf4;color:#22c55e;">
+                    <div class="stat-icon" style="background:var(--success-bg);color:var(--success);">
+                    
                         <i class="bi bi-collection"></i>
                     </div>
                 </div>
@@ -49,7 +50,7 @@
                         <div class="stat-value">{{ total_bom_items }}</div>
                         <div class="stat-label mt-1">BOM Line Items</div>
                     </div>
-                    <div class="stat-icon" style="background:#fefce8;color:#eab308;">
+                    <div class="stat-icon" style="background:rgba(234,179,8,0.15);color:#EAB308;">
                         <i class="bi bi-diagram-3"></i>
                     </div>
                 </div>
@@ -66,7 +67,7 @@
                         <div class="stat-value">{{ total_wood_parts }}</div>
                         <div class="stat-label mt-1">Dimension Entries</div>
                     </div>
-                    <div class="stat-icon" style="background:#fff7ed;color:#f97316;">
+                    <div class="stat-icon" style="background:rgba(249,115,22,0.15);color:#F97316;">
                         <i class="bi bi-rulers"></i>
                     </div>
                 </div>
@@ -86,7 +87,7 @@
                     <div class="stat-value">{{ total_suppliers }}</div>
                     <div class="stat-label mt-1">Active Suppliers</div>
                 </div>
-                <div class="stat-icon" style="background:#f0f9ff;color:#0ea5e9;">
+                <div class="stat-icon" style="background:rgba(14,165,233,0.15);color:#0EA5E9;">
                     <i class="bi bi-truck"></i>
                 </div>
             </div>
@@ -105,7 +106,7 @@
                     </div>
                     <div class="stat-label mt-1">Total Portfolio Cost</div>
                 </div>
-                <div class="stat-icon" style="background:#fdf4ff;color:#a855f7;">
+                <div class="stat-icon" style="background:rgba(168,85,247,0.15);color:#A855F7;">
                     <i class="bi bi-currency-rupee"></i>
                 </div>
             </div>
@@ -209,14 +210,14 @@
                         <tr>
                             <td class="ps-3">{{ resource.resource_name }}</td>
                             <td>
-                                <span class="badge bg-light text-dark border"
+                                <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                                       style="font-size:0.7rem;">
                                     {{ resource.category }}
                                 </span>
                             </td>
                             <td class="pe-3 text-end">
                                 <strong>₹{{ resource.rate }}</strong>
-                                <span style="color:#aaa;font-size:0.75rem;">
+                                <span style="color:var(--text-muted);font-size:0.75rem;">
                                     /{{ resource.unit }}
                                 </span>
                             </td>

@@ -116,7 +116,7 @@
 
                     <div class="mb-2">
                         <div style="font-size:0.78rem; font-weight:600;
-                                    color:#6c757d; text-transform:uppercase;
+                                    color:var(--text-muted); text-transform:uppercase;
                                     letter-spacing:0.5px;">
                             Rate Override
                         </div>
@@ -131,9 +131,9 @@
                     <!-- Show current effective rate source -->
                     {% with src=resource.effective_rate_source %}
                     <div class="p-3 mb-3"
-                         style="background:#f8f9fa;
+                         style="background:var(--surface-raised);
                                 border-radius:8px;
-                                border:1px solid #e9ecef;
+                                border:1px solid var(--border);
                                 font-size:0.82rem;">
                         <i class="bi bi-lightning-charge-fill
                                    text-warning me-1"></i>

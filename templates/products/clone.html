@@ -8,23 +8,23 @@
         <!-- What we're cloning from -->
         <div class="content-card p-4 mb-4">
             <div class="d-flex align-items-start gap-3">
-                <div style="width:48px; height:48px; background:#f0f0ff;
+                <div style="width:48px; height:48px; background:var(--surface-raised);
                             border-radius:12px; display:flex; align-items:center;
                             justify-content:center; font-size:1.4rem; flex-shrink:0;">
                     <i class="bi bi-copy text-primary"></i>
                 </div>
                 <div>
-                    <div style="font-size:0.75rem; font-weight:600; color:#6c757d;
+                    <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted);
                                 text-transform:uppercase; letter-spacing:0.5px;">
                         Cloning from
                     </div>
-                    <div class="fw-bold" style="color:#1a1f3a; font-size:1rem;">
+                    <div class="fw-bold" style="color:var(--text); font-size:1rem;">
                         {{ original.product_name }}
                     </div>
-                    <code style="font-size:0.82rem; color:#6366f1;">
+                    <code class="font-mono" style="font-size:0.82rem; color:var(--accent);">
                         {{ original.product_code }}
                     </code>
-                    <div class="mt-1" style="font-size:0.8rem; color:#6c757d;">
+                    <div class="mt-1" style="font-size:0.8rem; color:var(--text-muted);">
                         {{ original.bom_items.count }} BOM item(s) ·
                         {{ original.wood_parts.count }} wood part(s)
                         will be copied
@@ -80,9 +80,9 @@
 
                     <!-- What will be cloned -->
                     <div class="p-3 mb-4"
-                         style="background:#f8f9fa; border-radius:8px;
+                         style="background:var(--surface-raised); border-radius:8px;
                                 border:1px solid #e9ecef; font-size:0.82rem;">
-                        <div class="fw-semibold mb-2" style="color:#1a1f3a;">
+                        <div class="fw-semibold mb-2" style="color:var(--text);">
                             The following will be copied:
                         </div>
                         <div class="d-flex gap-3">

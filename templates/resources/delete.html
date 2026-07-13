@@ -9,7 +9,7 @@
         <!-- ── Resource is in use — cannot delete ──────────────── -->
         <div class="content-card">
             <div class="card-header"
-                 style="background:#fff8e1; border-bottom:1px solid #ffe082;">
+                 style="background:var(--warning-bg); border-bottom:1px solid var(--warning-border);">
                 <i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
                 Cannot Delete — Resource is in Use
             </div>
@@ -25,10 +25,10 @@
                     {% if bom_count %}
                     <div class="col-6">
                         <div class="p-3 text-center"
-                             style="background:#f8f9fa; border-radius:8px;
-                                    border:1px solid #e9ecef;">
+                             style="background:var(--surface-raised); border-radius:8px;
+                                    border:1px solid var(--border);">
                             <div style="font-size:1.5rem; font-weight:700;
-                                        color:#1a1f3a;">
+                                        color:var(--text);">
                                 {{ bom_count }}
                             </div>
                             <div class="text-muted" style="font-size:0.8rem;">
@@ -41,10 +41,10 @@
                     {% if wood_count %}
                     <div class="col-6">
                         <div class="p-3 text-center"
-                             style="background:#f8f9fa; border-radius:8px;
-                                    border:1px solid #e9ecef;">
+                             style="background:var(--surface-raised); border-radius:8px;
+                                    border:1px solid var(--border);">
                             <div style="font-size:1.5rem; font-weight:700;
-                                        color:#1a1f3a;">
+                                        color:var(--text);">
                                 {{ wood_count }}
                             </div>
                             <div class="text-muted" style="font-size:0.8rem;">
@@ -89,7 +89,7 @@
         <!-- ── Resource is not in use — safe to delete ─────────── -->
         <div class="content-card">
             <div class="card-header"
-                 style="background:#fff5f5; border-bottom:1px solid #fecaca;">
+                style="background:var(--danger-bg); border-bottom:1px solid var(--danger-border);">
                 <i class="bi bi-trash-fill text-danger me-2"></i>
                 Delete Resource
             </div>
@@ -100,9 +100,9 @@
                 </p>
 
                 <div class="p-3 mb-4"
-                     style="background:#f8f9fa; border-radius:8px;
-                            border:1px solid #e9ecef;">
-                    <div class="fw-bold" style="color:#1a1f3a;">
+                     style="background:var(--surface-raised); border-radius:8px;
+                     border:1px solid var(--border);">
+                    <div class="fw-bold" style="color:var(--text);">
                         {{ resource.resource_name }}
                     </div>
                     <div class="text-muted" style="font-size:0.82rem;">

@@ -25,7 +25,7 @@ def costing_list(request):
     products = Product.objects.filter(
         is_deleted=False,
         active=True
-    ).order_by('product_name')
+    ).order_by('product_name').prefetch_related('bom_items__resource')
 
     if search_query:
         products = products.filter(
@@ -33,10 +33,19 @@ def costing_list(request):
             models.Q(product_code__icontains=search_query)
         )
 
+    portfolio_total = Decimal('0')
+    for product in products:
+        product.total_cost = sum(
+            (item.cost for item in product.bom_items.all()),
+            Decimal('0')
+        )
+        portfolio_total += product.total_cost
+
     context = {
         'page_title': 'Cost Sheets',
         'products': products,
         'search_query': search_query,
+        'portfolio_total': portfolio_total,
     }
     return render(request, 'costing/list.html', context)
 

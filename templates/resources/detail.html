@@ -87,16 +87,16 @@
     <div class="d-flex justify-content-between align-items-start
                 flex-wrap gap-3">
         <div>
-            <div style="font-size:0.75rem; color:#6c757d;
+            <div style="font-size:0.75rem; color:var(--text-muted);
                         font-weight:600; text-transform:uppercase;
                         letter-spacing:0.5px;">
                 Resource
             </div>
-            <h4 class="mb-1 fw-bold" style="color:#1a1f3a;">
+            <h4 class="mb-1 fw-bold" style="color:var(--text);">
                 {{ resource.resource_name }}
             </h4>
             <div class="d-flex gap-2 align-items-center flex-wrap">
-                <span class="badge bg-light text-dark border"
+                <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                       style="font-size:0.75rem;">
                     {{ resource.category }}
                 </span>
@@ -136,7 +136,7 @@
         <span>
             <i class="bi bi-truck me-2 text-primary"></i>
             Suppliers
-            <span class="badge bg-light text-dark border ms-1"
+            <span class="badge" style="background:var(--surface-raised); color:var(--text); border:1px solid var(--border);"
                   style="font-size:0.75rem;">
                 {{ linked_suppliers.count }}
             </span>
@@ -161,7 +161,7 @@
         <tbody>
             {% for link in linked_suppliers %}
             <tr {% if link.preferred %}
-                    style="background:#f0fff4;"
+                    style="background:var(--success-bg);"
                 {% elif not link.active %}
                     style="opacity:0.55;"
                 {% endif %}>
@@ -202,7 +202,7 @@
                                  gap-1 justify-content-end">
                         {% csrf_token %}
                         <span style="font-size:0.8rem;
-                                     color:#6c757d;">₹</span>
+                                     color:var(--text-muted);">₹</span>
                         <input type="number"
                                name="supplier_rate"
                                value="{{ link.supplier_rate }}"
@@ -275,9 +275,9 @@
     <!-- Price comparison bar -->
     {% if linked_suppliers.count > 1 %}
     <div class="px-4 py-3"
-         style="background:#f8f9fa;
-                border-top:1px solid #f0f0f0;
-                font-size:0.8rem; color:#6c757d;">
+         style="background:var(--surface-raised);
+                border-top:1px solid var(--border);
+                font-size:0.8rem; color:var(--text-muted);">
         <i class="bi bi-bar-chart me-1"></i>
         Lowest available:
         <strong class="text-success">
@@ -451,7 +451,7 @@
 
             {% if resource.manual_override_rate %}
             <div class="mt-3 p-3"
-                 style="background:#e8f4fd; border-radius:8px;
+                 style="background:var(--info-bg); border-radius:8px;
                         font-size:0.82rem;">
                 <i class="bi bi-exclamation-circle-fill
                            text-info me-1"></i>
