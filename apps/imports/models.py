@@ -58,6 +58,7 @@ class ImportLog(models.Model):
 
     # Counts — all default to 0, only set on success
     products_imported   = models.IntegerField(default=0)
+    parts_imported = models.IntegerField(default=0)
     resources_imported  = models.IntegerField(default=0)
     bom_rows_imported   = models.IntegerField(default=0)
     wood_parts_imported = models.IntegerField(default=0)

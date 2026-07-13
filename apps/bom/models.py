@@ -5,6 +5,27 @@ from apps.products.models import Product
 from apps.resources.models import Resource
 
 
+class Part(models.Model):
+    """
+    A named component of a product (e.g. 'Table Top', 'Leg 1').
+    Exists only to organize WoodPart entries in the BOM — no
+    standalone CRUD page. Managed via the Parts sheet import
+    and inline from the WoodPart add/edit forms.
+    """
+    product = models.ForeignKey(
+        'products.Product',
+        on_delete=models.CASCADE,
+        related_name='parts',
+    )
+    name = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = [['product', 'name']]
+
+    def __str__(self):
+        return f'{self.product.product_code} — {self.name}'
+
 class BOMItem(models.Model):
     """
     Standard Bill of Materials line item.
@@ -110,6 +131,13 @@ class WoodPart(models.Model):
     )
 
     part_name = models.CharField(max_length=200)
+
+    part = models.ForeignKey(
+        Part,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='wood_parts',
+    )
 
     # Dimensions
     width   = models.DecimalField(max_digits=10, decimal_places=4, default=0)

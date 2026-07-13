@@ -23,7 +23,7 @@ from django.db import transaction
 
 from apps.resources.models import Resource
 from apps.products.models import Product
-from apps.bom.models import BOMItem, WoodPart
+from apps.bom.models import BOMItem, WoodPart, Part
 from apps.suppliers.models import Supplier
 from apps.imports.models import ImportLog
 
@@ -203,6 +203,48 @@ def validate_products(path):
 
     return errors
 
+def validate_parts(path):
+    """
+    Validates the Parts sheet.
+    Columns: Product (forward-filled), Part.
+    """
+    errors = []
+    sheet  = 'Parts'
+
+    df, read_error = _read_sheet(path, sheet)
+    if read_error:
+        return [_err(sheet, '—', f'Cannot read sheet: {read_error}')]
+
+    required = ['Product', 'Part']
+    missing  = [c for c in required if c not in df.columns]
+    if missing:
+        return [_err(sheet, '—', f'Missing columns: {", ".join(missing)}.')]
+
+    df['Product'] = df['Product'].ffill()
+    valid_products = _get_product_names_from_file(path)
+
+    for idx, row in df.iterrows():
+        excel_row    = idx + 2
+        product_name = _normalize(row['Product'])
+        part_name    = _normalize(row['Part'])
+
+        if not product_name and not part_name:
+            continue
+        if not product_name:
+            errors.append(_err(sheet, excel_row, 'Product is empty.'))
+            continue
+        if not part_name:
+            errors.append(_err(sheet, excel_row,
+                f'"{product_name}": Part name is empty.'))
+            continue
+
+        code = _make_product_code(product_name)
+        if (product_name.lower() not in valid_products
+                and code not in valid_products):
+            errors.append(_err(sheet, excel_row,
+                f'"{product_name}": Not found in Products sheet.'))
+
+    return errors
 
 def validate_bom(path):
     """
@@ -311,6 +353,13 @@ def validate_wood(path):
         excel_row     = idx + 2
         product_name  = _normalize(row['Product'])
         resource_name = _normalize(row['Resource'])
+        part_value = _normalize(row.get('Parts', ''))
+
+        if not part_value or part_value.lower() == 'select':
+            errors.append(_err(sheet, excel_row,
+                f'"{product_name}" / "{resource_name}": '
+                f'Parts value is missing or still set to "Select". '
+                f'Enter the actual part name (e.g. "Leg 1", "Table Top").'))
 
         if not product_name and not resource_name:
             continue
@@ -486,6 +535,7 @@ def validate_workbook(path):
         ('BOM',           validate_bom),
         ('Wood, Ply MDF', validate_wood),
         ('Suppliers',     validate_suppliers),
+        ('Parts',         validate_parts),
     ]
 
     for sheet_name, validator_fn in validators:
@@ -588,6 +638,38 @@ def import_products(path):
 
     return result
 
+def import_parts(path):
+    result = {'imported': 0, 'updated': 0, 'errors': []}
+
+    df, read_error = _read_sheet(path, 'Parts')
+    if read_error or df is None:
+        return result
+
+    df['Product'] = df['Product'].ffill()
+
+    for _, row in df.iterrows():
+        product_name = _normalize(row['Product'])
+        part_name    = _normalize(row['Part'])
+
+        if not product_name or not part_name:
+            continue
+
+        code    = _make_product_code(product_name)
+        product = Product.objects.filter(
+            product_code=code, is_deleted=False
+        ).first()
+        if not product:
+            continue
+
+        _, created = Part.objects.get_or_create(
+            product=product, name=part_name
+        )
+        if created:
+            result['imported'] += 1
+        else:
+            result['updated'] += 1
+
+    return result
 
 def import_bom(path):
     result = {'imported': 0, 'skipped': 0, 'errors': []}
@@ -651,7 +733,7 @@ def import_wood(path):
     for _, row in df.iterrows():
         product_name  = _normalize(row['Product'])
         resource_name = _normalize(row['Resource'])
-        part_name     = _normalize(row.get('Parts', '')) or resource_name
+        part_name = _normalize(row.get('Parts', ''))
 
         if not product_name or not resource_name:
             continue
@@ -691,6 +773,9 @@ def import_wood(path):
                 'breadth': breadth,
                 'length':  length,
                 'pieces':  pieces,
+                'part':    Part.objects.get_or_create(
+                                product=product, name=part_name
+                           )[0],
             },
         )
 
@@ -762,6 +847,7 @@ def import_workbook(path, log, uploaded_by):
         with transaction.atomic():
             r = import_resources(path) if _sheet_exists(path, 'Resource') else {'imported': 0, 'updated': 0, 'errors': []}
             p = import_products(path) if _sheet_exists(path, 'Products') else {'imported': 0, 'updated': 0, 'errors': []}
+            pt = import_parts(path) if _sheet_exists(path, 'Parts') else {'imported': 0, 'updated': 0, 'errors': []}
             b = import_bom(path) if _sheet_exists(path, 'BOM') else {'imported': 0, 'skipped': 0, 'errors': []}
             w = import_wood(path) if _sheet_exists(path, 'Wood, Ply MDF') else {'imported': 0, 'updated': 0, 'skipped': 0, 'errors': []}
             s = (import_suppliers(path)
@@ -770,6 +856,7 @@ def import_workbook(path, log, uploaded_by):
 
             log.resources_imported  = r['imported'] + r['updated']
             log.products_imported   = p['imported'] + p['updated']
+            log.parts_imported      = pt['imported'] + pt['updated']
             log.bom_rows_imported   = b['imported']
             log.wood_parts_imported = w['imported'] + w['updated']
             log.suppliers_imported  = s['imported'] + s['updated']
@@ -805,6 +892,13 @@ SHEET_REGISTRY = {
         'validator': validate_products,
         'importer':  import_products,
         'log_field': 'products_imported',
+    },
+    'parts': {
+        'label':     'Parts',
+        'sheet':     'Parts',
+        'validator': validate_parts,
+        'importer':  import_parts,
+        'log_field': 'parts_imported',
     },
     'bom': {
         'label':     'BOM',

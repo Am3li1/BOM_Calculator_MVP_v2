@@ -280,14 +280,30 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 ---
 
 ## Deployment Information
-- **Platform:** Hostinger VPS KVM 4 (Ubuntu 24.04 LTS)
-- **Stack:** Nginx → Gunicorn → Django → PostgreSQL
-- **Build:** `build.sh` (pip install → collectstatic → migrate → createsuperuser) — local/CI use only; production uses systemd services
-- **Database:** PostgreSQL — persistent across deploys
-- **Default superuser:** `admin` / `changeme123` — change immediately.
-- **Env vars required:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`
+- **Platform:** Physical Debian 12 server (`prod-node-01`), client's Coimbatore office — deployed and managed via **Coolify** (v4.1.2)
+- **Stack:** Tailscale (network access) → Tailscale Serve (HTTPS/TLS termination) → Traefik (Coolify's reverse proxy) → Gunicorn → Django → PostgreSQL (Docker container, Coolify-managed)
+- **Containerization:** Docker, built from repo's `Dockerfile` via Coolify's GitHub integration (`Am3li1/BOM_Calculator_MVP_v2`, branch `main`)
+- **Entrypoint:** `docker-entrypoint.sh` — waits for Postgres, runs migrations, collectstatic, then Gunicorn
+- **Database:** PostgreSQL 16-alpine, Coolify-managed Docker resource — persistent volume, no data loss on redeploy
+- **Access model:** Server only reachable via Tailscale (tailnet: `visanty@`). No public internet exposure. Devices must be added to the tailnet to access the app — this is the access control mechanism (not IP/firewall based).
+- **URLs:**
+  - HTTPS (primary): `https://prod-node-01.tail7e0384.ts.net`
+  - HTTP (legacy/fallback): `http://otiwlmrwnyx3j1r42w7qe23r.100.75.145.23.sslip.io`
+- **Default superuser:** created manually via `docker exec ... python manage.py createsuperuser` — change credentials as needed.
+- **Env vars required (set in Coolify UI):** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (points to internal Docker network container name, not host IP)
 - **Timezone:** `Asia/Kolkata` (IST)
 - **User roles:** Set `is_staff=True` for admin users in Django admin.
+
+### Known host-level quirk
+`/data/coolify/databases/` and `/data/coolify/applications/` subdirectories are sometimes created by Coolify with owner `santosh:santosh` and no traverse permission on parent dirs (`/data/coolify`, `/data/coolify/databases`, `/data/coolify/applications` are `9999:root`, mode 700). This breaks Coolify's own file-write steps (`.env` generation, Postgres init files) with `Permission denied`. Fixed via:
+```bash
+sudo setfacl -m u:santosh:--x /data/coolify
+sudo setfacl -m u:santosh:--x /data/coolify/databases
+sudo setfacl -m u:santosh:--x /data/coolify/applications
+sudo chown -R santosh:santosh /data/coolify/applications/<app-uuid>   # app dirs — santosh writes .env directly
+sudo chown -R 70:70 /data/coolify/databases/<db-uuid>                # db dirs — postgres container runs as uid 70
+```
+Watch for this same pattern if new databases/apps are added later. Also: `santosh` must be in the `docker` group (`sudo usermod -aG docker santosh`) for Coolify's server validation to pass.
 
 ---
 
@@ -295,7 +311,8 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 
 1. **No CSRF bypass** — all POST forms must include `{% csrf_token %}`.
 2. **`ResourceSupplier.supplier_code`** uses join table PK, not Supplier PK — misleading name.
-3. **SQLite in production on Render** — data lost on every deploy. Move to PostgreSQL before real use.
+3. **~~SQLite in production on Render~~ — resolved.** Now deployed on PostgreSQL via Coolify; data persists across deploys.
+3a. **CSRF_TRUSTED_ORIGINS must include every scheme+host the app is accessed by** — currently needs both `http://` (sslip.io fallback) and `https://` (Tailscale Serve) entries for `prod-node-01.tail7e0384.ts.net`. Missing an origin here causes `403 CSRF verification failed` even though the request otherwise succeeds.
 4. **WoodPart part_name fallback** — if "Parts" column is empty, falls back to resource name. Multiple cuts of same material for same product will overwrite each other on re-import.
 5. **Portfolio cost on dashboard** — summed in Python, not SQL. Acceptable for MVP; will slow with very large datasets.
 
@@ -303,7 +320,7 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 
 ## Future Roadmap
 
-1. **PostgreSQL migration** — production data persistence
+1. ~~**PostgreSQL migration**~~ ✅ done — deployed on Coolify-managed PostgreSQL
 2. **User management UI** — add/remove users without Django admin
 3. **Password reset flow**
 4. **Overhead allocation** — % overhead on direct costs

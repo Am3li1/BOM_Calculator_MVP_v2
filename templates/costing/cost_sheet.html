@@ -181,7 +181,6 @@
                 <th class="ps-4">Part Name</th>
                 <th class="text-end">Width</th>
                 <th class="text-end">Breadth</th>
-                <th class="text-end">Height</th>
                 <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
                 <th class="text-end pe-4">Calc Qty</th>
@@ -210,15 +209,6 @@
                     <span style="font-size:0.72rem;">
                         {{ part.breadth_unit }}
                     </span>
-                </td>
-                <td class="text-end text-muted"
-                    style="font-size:0.82rem;">
-                    {% if part.height %}
-                        {{ part.height|floatformat:2 }}
-                        <span style="font-size:0.72rem;">
-                            {{ part.height_unit }}
-                        </span>
-                    {% else %}—{% endif %}
                 </td>
                 <td class="text-end text-muted"
                     style="font-size:0.82rem;">

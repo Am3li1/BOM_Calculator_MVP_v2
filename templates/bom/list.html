@@ -168,11 +168,9 @@
     <table class="table table-hover mb-0">
         <thead>
             <tr>
-                <th class="ps-4">Part Name</th>
                 <th>Material</th>
                 <th class="text-end">Width</th>
                 <th class="text-end">Breadth</th>
-                <th class="text-end">Height</th>
                 <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
                 <th class="text-end">Calc Qty</th>
@@ -180,9 +178,23 @@
             </tr>
         </thead>
         <tbody>
-            {% for part in wood_parts %}
+            {% regroup wood_parts by part as part_groups %}
+            {% for group in part_groups %}
+            <tr class="table-light">
+                <td colspan="7" class="ps-4 fw-semibold" style="font-size:0.85rem;">
+                    <i class="bi bi-box-seam me-1 text-muted"></i>
+                    {{ group.grouper.name|default:"Ungrouped" }}
+                    <span class="badge bg-light text-dark border ms-1"
+                          style="font-size:0.7rem;">
+                        {{ group.list|length }} item{{ group.list|length|pluralize }}
+                    </span>
+                </td>
+            </tr>
+            {% for part in group.list %}
             <tr>
-                <td class="ps-4">{{ part.part_name }}</td>
+                <td class="ps-4 ps-md-5 text-muted" style="font-size:0.8rem;">
+                    <i class="bi bi-arrow-return-right me-1"></i>
+                </td>
                 <td>
                     <span class="badge bg-light text-dark border"
                           style="font-size:0.7rem;">
@@ -192,34 +204,17 @@
 
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.width|floatformat:2 }}
-                    <span class="text-muted" style="font-size:0.72rem;">
-                        {{ part.width_unit }}
-                    </span>
+                    <span class="text-muted" style="font-size:0.72rem;">{{ part.width_unit }}</span>
                 </td>
 
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.breadth|floatformat:2 }}
-                    <span class="text-muted" style="font-size:0.72rem;">
-                        {{ part.breadth_unit }}
-                    </span>
-                </td>
-
-                <td class="text-end" style="font-size:0.82rem;">
-                    {% if part.height %}
-                        {{ part.height|floatformat:2 }}
-                        <span class="text-muted" style="font-size:0.72rem;">
-                            {{ part.height_unit }}
-                        </span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
+                    <span class="text-muted" style="font-size:0.72rem;">{{ part.breadth_unit }}</span>
                 </td>
 
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.length|floatformat:2 }}
-                    <span class="text-muted" style="font-size:0.72rem;">
-                        {{ part.length_unit }}
-                    </span>
+                    <span class="text-muted" style="font-size:0.72rem;">{{ part.length_unit }}</span>
                 </td>
 
                 <td class="text-end text-muted" style="font-size:0.82rem;">
@@ -228,30 +223,27 @@
 
                 <td class="text-end" style="font-size:0.82rem;">
                     {{ part.calculated_quantity|floatformat:4 }}
-                    <i class="bi bi-lock-fill text-muted"
-                       style="font-size:0.65rem;"
-                       title="Auto-calculated"></i>
+                    <i class="bi bi-lock-fill text-muted" style="font-size:0.65rem;" title="Auto-calculated"></i>
                 </td>
 
                 <td class="text-end pe-4">
                     <div class="d-flex gap-1 justify-content-end">
                         <a href="{% url 'bom:wood_edit' pk=part.pk %}"
-                           class="btn btn-sm btn-outline-primary"
-                           title="Edit">
+                           class="btn btn-sm btn-outline-primary" title="Edit">
                             <i class="bi bi-pencil"></i>
                         </a>
                         <form method="post"
                               action="{% url 'bom:wood_remove' pk=part.pk %}"
-                              onsubmit="return confirm('Remove {{ part.part_name }}?')">
+                              onsubmit="return confirm('Remove this dimension entry?')">
                             {% csrf_token %}
-                            <button type="submit"
-                                    class="btn btn-sm btn-outline-danger">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </form>
                     </div>
                 </td>
             </tr>
+            {% endfor %}
             {% endfor %}
         </tbody>
     </table>

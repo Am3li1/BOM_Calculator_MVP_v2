@@ -23,16 +23,23 @@
                 <form method="post">
                     {% csrf_token %}
 
-                    <!-- Part Name -->
+                    <!-- Part -->
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">
-                            Part Name
-                        </label>
-                        <input type="text"
-                               name="part_name"
-                               class="form-control"
-                               placeholder="e.g. Top Panel, Side Rail"
-                               required autofocus>
+                        <label class="form-label fw-semibold">Part</label>
+                        <select name="part" id="part-select"
+                                class="form-select" required
+                                onchange="document.getElementById('new-part-wrap').style.display = (this.value === '__new__') ? 'block' : 'none';">
+                            <option value="">— Select Part —</option>
+                            {% for part in existing_parts %}
+                            <option value="{{ part.pk }}">{{ part.name }}</option>
+                            {% endfor %}
+                            <option value="__new__">+ Add new part…</option>
+                        </select>
+                        <div id="new-part-wrap" class="mt-2" style="display:none;">
+                            <input type="text" name="new_part_name"
+                                   class="form-control"
+                                   placeholder="e.g. Table Top, Leg 1">
+                        </div>
                     </div>
 
                     <!-- Material -->

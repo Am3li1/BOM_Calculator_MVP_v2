@@ -1,15 +1,15 @@
 # PROJECT_STATUS.md — BOM Costing System
 
 > **Living document.** Update this file whenever major features are completed or the roadmap shifts.
-> Last updated: June 2026 — PostgreSQL migration in progress; Oracle Cloud provisioning pending
+> Last updated: July 2026 — Production deployment complete on Coolify/Docker/PostgreSQL, accessible via Tailscale HTTPS
 
 ---
 
 ## Project Status
 
-**Current Version:** MVP v1.0 — Feature-complete for core BOM costing. In active use/development.
+**Current Version:** MVP v1.0 — Feature-complete for core BOM costing. **Deployed to production.**
 
-**Overall Health:** Functional and deployed. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration partially complete — code ready, VM provisioning pending.
+**Overall Health:** Functional and deployed to production. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration complete — live on Coolify-managed Postgres. App is reachable over Tailscale via HTTPS at `https://prod-node-01.tail7e0384.ts.net`.
 
 ---
 
@@ -96,53 +96,122 @@
 
 ---
 
-## In Progress
+## Completed: PostgreSQL Migration + Production Deployment
 
-### PostgreSQL Migration + Hostinger VPS Deployment
-**Status: 🔄 In Progress**
+### Module: Deployment (Coolify / Docker / Tailscale)
+**Status: ✅ Complete**
 
-#### Code changes — ✅ Done (local, not yet deployed)
-- `requirements.txt` — added `psycopg2-binary==2.9.10` and `dj-database-url==2.2.0`
-- `config/settings.py` — `DATABASES` now reads `DATABASE_URL` env var; falls back to SQLite locally
+Deployment target changed from the originally planned Hostinger VPS to a **physical Debian 12 server in the client's Coimbatore office** (`prod-node-01`), managed via **Coolify** and accessed exclusively over **Tailscale** (no public internet exposure).
 
-#### Infrastructure — ⏳ Next milestone: Purchase Hostinger VPS KVM 4
-- Oracle Cloud Free Tier dropped — capacity issues made provisioning unreliable
-- Target: Hostinger VPS KVM 4, Ubuntu 24.04 LTS
+#### Code changes
+- `requirements.txt` — `psycopg2-binary==2.9.10`, `dj-database-url==2.2.0`
+- `config/settings.py` — `DATABASES` reads `DATABASE_URL` env var; falls back to SQLite locally
+- `Dockerfile`, `docker-compose.yml`, `docker-entrypoint.sh` — reviewed and corrected for production use
 
-#### Deployment phases (Hostinger)
+#### Infrastructure
+- **Server:** Debian 12, hostname `prod-node-01.tail7e0384.ts.net`, Tailscale IP `100.75.145.23`
+- **Access:** SSH key auth, passwordless sudo for `santosh`; app reachable only to devices on the tailnet
+- **Coolify:** v4.1.2, Docker-based orchestration, GitHub-integrated auto-build from `Am3li1/BOM_Calculator_MVP_v2` (branch `main`)
+- **Database:** PostgreSQL 16-alpine, Coolify-managed Docker resource, persistent volume
+- **Reverse proxy / TLS:** Traefik (Coolify-managed) for internal routing; **Tailscale Serve** terminates HTTPS with an auto-issued trusted cert for `prod-node-01.tail7e0384.ts.net`
+
+#### Deployment phases — all complete
 | Phase | Task | Status |
 |---|---|---|
-| 1 | Purchase Hostinger VPS KVM 4, select Ubuntu 24.04 LTS | ⏳ Pending |
-| 2 | Secure VM — firewall, SSH hardening, OS updates | ⏳ Pending |
-| 3 | Install PostgreSQL, create DB and user | ⏳ Pending |
-| 4 | Install Python, clone repo, configure Django env vars | ⏳ Pending |
-| 5 | Configure Gunicorn as systemd service | ⏳ Pending |
-| 6 | Configure Nginx as reverse proxy | ⏳ Pending |
-| 7 | Domain + SSL via Let's Encrypt | ⏳ Pending |
-| 8 | Production smoke test | ⏳ Pending |
+| 1 | Create PostgreSQL resource in Coolify | ✅ Done |
+| 2 | Create Django application resource (GitHub source) | ✅ Done |
+| 3 | Configure environment variables (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`) | ✅ Done |
+| 4 | Deploy application (Docker build + rolling update) | ✅ Done |
+| 5 | Verify migrations, static files, login, admin | ✅ Done |
+| 6 | Confirm final URL, review settings | ✅ Done |
+| 7 | Clarify access model — Tailscale membership = access control | ✅ Done |
+| 8 | Enable HTTPS via Tailscale Serve | ✅ Done |
+
+#### Issues encountered and resolved during deployment
+1. **Permission denied writing Coolify-managed directories** (`/data/coolify/databases/...`, `/data/coolify/applications/...`) — root cause: `/data/coolify` and its subdirs are owned by uid `9999` with mode `700`, blocking traversal for the `santosh` SSH user Coolify automation runs as. Fixed with targeted `setfacl` (traverse-only on parents) and `chown` (ownership on the specific resource dirs — `9999`/uid `70` for Postgres-owned paths, `santosh` for app `.env` writes).
+2. **`santosh` missing from `docker` group** — caused `permission denied` on direct `docker` CLI use and likely contributed to inconsistent automation behavior. Fixed with `usermod -aG docker santosh`.
+3. **App unreachable externally on port 8000** — Coolify doesn't map container ports to the host directly; traffic routes through Traefik by hostname. Resolved by using Coolify's auto-assigned `sslip.io` domain and adding it to `ALLOWED_HOSTS`.
+4. **`400 Bad Request` (DisallowedHost)** — `ALLOWED_HOSTS` didn't include the sslip.io domain; fixed by updating the env var and redeploying (env var changes require an explicit redeploy to regenerate `.env`).
+5. **App unreachable from devices outside the tailnet** — expected behavior, not a bug; confirmed the access model (Tailscale membership required) and documented it as the intended security boundary.
+6. **HTTPS via `tailscale serve` initially failed ("Serve is not enabled on your tailnet")** — root cause: the Tailscale Serve enablement link was opened while logged into the wrong Tailscale account (`Am3li1@github` instead of `visanty@`, the account that owns `prod-node-01`). Fixed by re-enabling Serve while logged into the correct account.
+7. **`403 CSRF verification failed` after enabling HTTPS** — `CSRF_TRUSTED_ORIGINS` only had `http://` entries; added the `https://prod-node-01.tail7e0384.ts.net` origin and redeployed.
 
 ---
 
 ## Pending Features
 
-| Priority | Feature | File / Location | Notes |
-|---|---|---|---|
-| 🟢 LOW | **Password reset flow** | `apps/accounts/` | No self-service reset yet |
-| 🟢 LOW | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
-| 🟢 LOW | **Audit trail** | New middleware or model mixin | Who changed what and when |
-| 🟢 LOW | **Supplier additional fields** | `apps/suppliers/models.py` | Address, email, payment terms, lead time |
-| 🟢 LOW | **BOM versioning / history** | New model in `apps/bom` | Track changes over time |
-| 🟢 LOW | **Bulk operations** | List views | Bulk activate/deactivate |
+| Priority | Feature                             | File / Location                             | Notes                                                                                                                                                                                                                                 |
+| -------- | ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔴 HIGH  | **Parts Module & BOM Integration**  | `apps/bom`, `apps/imports`, `apps/products` | Add support for the **Parts** sheet from the Excel workbook. Display product parts (e.g. Table Top, Leg 1–4, Side Panel) within the BOM and link Wood/Ply/MDF entries to their respective parts. No separate sidebar module required. |
+| 🔴 HIGH  | **Modern UI Redesign (Dark Theme)** | Global templates & static assets            | Redesign the application with a modern dark theme, improved typography, spacing, cards, tables, forms, and responsive layout while preserving existing functionality.|
+| 🟢 LOW   | **Password reset flow** | `apps/accounts/` | No self-service reset yet |
+| 🟢 LOW   | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
+| 🟢 LOW   | **Audit trail** | New middleware or model mixin | Who changed what and when |
+| 🟢 LOW   | **Supplier additional fields** | `apps/suppliers/models.py` | Address, email, payment terms, lead time |
+| 🟢 LOW   | **BOM versioning / history** | New model in `apps/bom` | Track changes over time |
+| 🟢 LOW   | **Bulk operations** | List views | Bulk activate/deactivate |
 
 ---
+## Next Development Goal
+
+### Phase 1 – Parts Integration
+
+The original Excel workbook contains a **Parts** sheet.
+
+Additionally, the **Wood** and **Ply MDF** sheets reference a **Part** column.
+
+The application should support this workflow.
+
+Requirements:
+
+* Import the Parts sheet.
+* Associate Wood/Ply/MDF records with a Part.
+* Display Parts inside the BOM.
+* Example:
+
+Table
+
+* Table Top
+* Leg 1
+* Leg 2
+* Leg 3
+* Leg 4
+
+Each Wood/Ply/MDF item should clearly indicate which product part it belongs to.
+
+No standalone "Parts" page or sidebar item is required.
+
+Parts exist only to organize the BOM and improve manufacturing clarity.
+
+---
+
+### Phase 2 – UI Modernization
+
+After the Parts feature is complete:
+
+Redesign the entire application.
+
+Goals:
+
+* Modern dark theme
+* Better spacing
+* Improved typography
+* Cleaner forms
+* Better tables
+* Better cards
+* Consistent icons
+* Professional dashboard
+* Improved responsive layout
+
+The redesign should preserve all existing functionality while significantly improving the user experience.
 
 ## Known Issues
 
 ### 🟡 MEDIUM: ResourceSupplier.supplier_code Is Misleading
 Uses join table PK, not Supplier PK. Display-only, low risk.
 
-### 🟢 LOW: SQLite Still in Production
-PostgreSQL code is ready but not deployed — still on SQLite until Hostinger VPS is provisioned and configured.
+### ~~🟢 LOW: SQLite Still in Production~~ — Resolved
+App now runs on Coolify-managed PostgreSQL in production; SQLite is local-dev fallback only.
 
 ### 🟢 LOW: No CSRF Audit on Quick-Action Forms
 Inline POST forms should be audited for `{% csrf_token %}` before production.
@@ -166,7 +235,10 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Recent Changes Log
 
-| Jun 2026 | **Deployment target changed** — Oracle Cloud dropped; Hostinger VPS KVM 4 (Ubuntu 24.04) adopted | `PROJECT_STATUS.md`, `CLAUDE.md` |
+| Jul 2026 | Roadmap updated for Version 2 — Next priority is Parts Module and UI/UX redesign after successful production deployment | PROJECT_STATUS.md |
+| Jul 2026 | **Production deployment completed** — Coolify + Docker + PostgreSQL on Debian 12 (`prod-node-01`), accessed via Tailscale HTTPS (`tailscale serve`) | `PROJECT_STATUS.md`, `CLAUDE.md`, Coolify env vars |
+| Jul 2026 | **Deployment target changed again** — Hostinger VPS plan replaced by client's physical Debian 12 office server, managed via Coolify | `PROJECT_STATUS.md`, `CLAUDE.md` |
+| Jun 2026 | **Deployment target changed** — Oracle Cloud dropped; Hostinger VPS KVM 4 (Ubuntu 24.04) adopted *(superseded — see above)* | `PROJECT_STATUS.md`, `CLAUDE.md` |
 
 | Date | Change | Files |
 |---|---|---|
@@ -186,21 +258,24 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Deployment Notes
 
-### Current (Render — being phased out)
-- **Platform:** Render (free tier)
-- **Database:** SQLite — resets on every deploy
-- **Build script:** `build.sh`
+### Production (live)
+- **Platform:** Physical Debian 12 server, client's Coimbatore office (`prod-node-01`), managed via Coolify v4.1.2
+- **Stack:** Tailscale Serve (HTTPS) → Traefik (Coolify) → Gunicorn → Django → PostgreSQL 16-alpine (Docker, Coolify-managed)
+- **SSL:** Tailscale Serve auto-issued cert (tailnet-only trust, no public CA needed)
+- **Database:** PostgreSQL, persistent Docker volume, no data loss on redeploy
+- **URLs:** `https://prod-node-01.tail7e0384.ts.net` (primary), `http://otiwlmrwnyx3j1r42w7qe23r.100.75.145.23.sslip.io` (fallback)
+- **Access control:** Tailscale tailnet membership — devices without Tailscale cannot reach the server at all, regardless of physical network
 
-### Target (Hostinger VPS — in progress)
-- **Platform:** Hostinger VPS KVM 4 — Ubuntu 24.04 LTS
-- **Stack:** Nginx → Gunicorn → Django → PostgreSQL (same VM)
-- **SSL:** Let's Encrypt
-- **Database:** PostgreSQL (persistent, no data loss on redeploy)
+### Render (retired)
+- Previously used for early MVP hosting on SQLite (free tier, data reset every deploy). Fully replaced by the Coolify deployment above.
 
-### Both environments
-- **Default credentials:** `admin` / `changeme123` — change immediately
+### Hostinger VPS (superseded, never provisioned)
+- Was the planned target before the client's on-prem Debian server + Coolify became the actual deployment path. No infrastructure was purchased under this plan.
+
+### Current environment
+- **Default credentials:** superuser created manually post-deploy — change immediately
 - **Timezone:** Asia/Kolkata (IST)
-- **Env vars required:** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `DATABASE_URL`
+- **Env vars required (Coolify):** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL`
 - **User roles:** Set via User Management UI or Django admin → `is_staff` checkbox
 - **Multi-user testing:** Use incognito window for second user
 

@@ -28,10 +28,7 @@ RUN pip install --upgrade pip \
 FROM python:3.12-slim AS final
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    # Tell Python where the packages installed in stage 1 live
-    PYTHONPATH=/app \
-    PATH="/install/bin:$PATH"
+    PYTHONUNBUFFERED=1
 
 # Runtime-only OS deps (libpq for psycopg2, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,6 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from the builder stage
+# (pip --prefix=/install lays out bin/ and lib/ the same way /usr/local
+# does, so copying straight into /usr/local makes everything "just work"
+# via the base image's default PATH — no custom PATH/PYTHONPATH needed)
 COPY --from=builder /install /usr/local
 
 WORKDIR /app

@@ -20,7 +20,7 @@ def bom_list(request, product_pk):
 
     wood_parts = WoodPart.objects.filter(
         product=product
-    ).select_related('resource')
+    ).select_related('resource', 'part').order_by('part__name', 'resource__resource_name')
 
     # Grand total is Standard BOM only.
     # Dimensions are measurement records — their cost is already
@@ -131,10 +131,12 @@ def woodpart_add(request, product_pk):
     """
     from apps.resources.models import Resource
     from apps.core.models import SystemConfig
+    from .models import Part
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
     config = SystemConfig.get_config()
+    existing_parts = Part.objects.filter(product=product)
 
     # Unit choices passed to template so we don't hardcode them there
     unit_choices = [
@@ -152,7 +154,8 @@ def woodpart_add(request, product_pk):
         from .models import WoodPart
 
         resource_id  = request.POST.get('resource')
-        part_name    = request.POST.get('part_name', '').strip()
+        part_id      = request.POST.get('part')
+        new_part_name = request.POST.get('new_part_name', '').strip()
         width        = request.POST.get('width')
         breadth      = request.POST.get('breadth')
         height       = request.POST.get('height') or '0'
@@ -163,16 +166,24 @@ def woodpart_add(request, product_pk):
         height_unit  = request.POST.get('height_unit', 'in')
         length_unit  = request.POST.get('length_unit', 'in')
 
-        if not all([resource_id, part_name, width, breadth, length, pieces]):
+        if not all([resource_id, part_id, width, breadth, length, pieces]) or \
+           (part_id == '__new__' and not new_part_name):
             messages.error(request, 'All fields except Height are required.')
         else:
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)
+                if part_id == '__new__':
+                    part_obj, _ = Part.objects.get_or_create(
+                        product=product, name=new_part_name
+                    )
+                else:
+                    part_obj = Part.objects.get(pk=part_id, product=product)
 
                 WoodPart.objects.create(
                     product      = product,
                     resource     = resource,
-                    part_name    = part_name,
+                    part         = part_obj,
+                    part_name    = part_obj.name,
                     width        = float(width),
                     breadth      = float(breadth),
                     height       = float(height),
@@ -203,6 +214,7 @@ def woodpart_add(request, product_pk):
         'all_resources': all_resources,
         'unit_choices': unit_choices,
         'divisor': config.wood_divisor,
+        'existing_parts': existing_parts,
     }
     return render(request, 'bom/woodpart_add.html', context)
 
@@ -223,6 +235,7 @@ def woodpart_edit(request, pk):
     product = wood_part.product
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
     config = SystemConfig.get_config()
+    existing_parts = Part.objects.filter(product=product)
 
     unit_choices = [
         ('in',   'Inches'),
@@ -255,7 +268,8 @@ def woodpart_edit(request, pk):
                 resource = Resource.objects.get(pk=resource_id, active=True)
 
                 wood_part.resource     = resource
-                wood_part.part_name    = part_name
+                wood_part.part         = part_obj
+                wood_part.part_name    = part_obj.name
                 wood_part.width        = float(width)
                 wood_part.breadth      = float(breadth)
                 wood_part.height       = float(height)
@@ -288,6 +302,7 @@ def woodpart_edit(request, pk):
         'all_resources': all_resources,
         'unit_choices': unit_choices,
         'divisor': config.wood_divisor,
+        'existing_parts': existing_parts,
     }
     return render(request, 'bom/woodpart_edit.html', context)
 
