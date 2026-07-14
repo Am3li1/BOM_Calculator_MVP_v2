@@ -196,7 +196,7 @@ def woodpart_add(request, product_pk):
                 )
                 messages.success(
                     request,
-                    f'Dimension entry "{part_name}" added successfully.'
+                    f'Dimension entry "{new_part_name}" added successfully.'
                 )
                 return redirect('bom:list', product_pk=product.pk)
 
