@@ -196,7 +196,7 @@ def woodpart_add(request, product_pk):
                 )
                 messages.success(
                     request,
-                    f'Dimension entry "{new_part_name}" added successfully.'
+                    f'Dimension entry "{part_obj.name}" added successfully.'
                 )
                 return redirect('bom:list', product_pk=product.pk)
 
@@ -228,6 +228,7 @@ def woodpart_edit(request, pk):
     Resource can also be changed.
     """
     from .models import WoodPart
+    from .models import Part 
     from apps.resources.models import Resource
     from apps.core.models import SystemConfig
 
@@ -266,6 +267,7 @@ def woodpart_edit(request, pk):
         else:
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)
+                part_obj, _ = Part.objects.get_or_create(product=product, name=part_name)
 
                 wood_part.resource     = resource
                 wood_part.part         = part_obj
