@@ -39,7 +39,7 @@
                         {% endif %}
                     </div>
 
-                    <!-- Category + Unit -->
+                    <!-- Category + Material Type -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">
                             <label class="form-label fw-semibold"
@@ -58,6 +58,26 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold"
                                    style="font-size:0.875rem;">
+                                {{ form.material_type.label }}
+                            </label>
+                            {{ form.material_type }}
+                            {% if form.material_type.errors %}
+                            <div class="text-danger mt-1"
+                                 style="font-size:0.8rem;">
+                                {{ form.material_type.errors.0 }}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">
+                                {{ form.material_type.help_text }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Unit -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
                                 {{ form.unit.label }}
                                 <span class="text-danger">*</span>
                             </label>
@@ -68,7 +88,7 @@
                                 {{ form.unit.errors.0 }}
                             </div>
                             {% endif %}
-                            <div class="form-text">
+                            <div class="form-text" id="unit-hint">
                                 e.g. cft, sqft, kg, day, nos
                             </div>
                         </div>
@@ -211,5 +231,29 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var materialTypeSelect = document.getElementById('id_material_type');
+    var unitInput = document.getElementById('id_unit');
+
+    // Suggested unit per material_type. 'other' isn't included on
+    // purpose — it covers labour (day), hardware (nos), kg, etc, so
+    // there's no single sensible default to suggest for it.
+    var UNIT_SUGGESTIONS = {
+        solid_wood: 'cft',
+        sheet:      'sqft',
+    };
+
+    if (materialTypeSelect && unitInput) {
+        materialTypeSelect.addEventListener('change', function () {
+            var suggestion = UNIT_SUGGESTIONS[materialTypeSelect.value];
+            if (suggestion) {
+                unitInput.value = suggestion;
+            }
+        });
+    }
+})();
+</script>
 
 {% endblock %}

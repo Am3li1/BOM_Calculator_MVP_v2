@@ -11,6 +11,7 @@ class ResourceForm(forms.ModelForm):
         fields = [
             'resource_name',
             'category',
+            'material_type',
             'unit',
             'rate',
             'active',
@@ -23,9 +24,14 @@ class ResourceForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'e.g. Teak Wood, Carpenter',
             }),
+            'material_type': forms.Select(attrs={
+                'class': 'form-select',
+                'id': 'id_material_type',
+            }),
             'unit': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'e.g. cft, sqft, kg, day, nos',
+                'id': 'id_unit',
             }),
             'rate': forms.NumberInput(attrs={
                 'class': 'form-control',
@@ -50,6 +56,7 @@ class ResourceForm(forms.ModelForm):
         labels = {
             'resource_name':        'Resource Name',
             'category':             'Category',
+            'material_type':        'Material Type',
             'unit':                 'Unit of Measurement',
             'rate':                 'Master Rate per Unit (₹)',
             'active':               'Active',
@@ -58,6 +65,12 @@ class ResourceForm(forms.ModelForm):
         }
 
         help_texts = {
+            'material_type': (
+                'Drives WoodPart dimension formulas (CFT vs SFT) and '
+                'auto-suggests a Unit below. Only set this for '
+                'dimensional materials — leave "Other" for labour, '
+                'hardware, polish, etc.'
+            ),
             'rate': (
                 'Fallback rate used when no supplier links exist.'
             ),

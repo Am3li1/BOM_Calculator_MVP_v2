@@ -215,6 +215,23 @@ def woodpart_add(request, product_pk):
         'unit_choices': unit_choices,
         'divisor': config.wood_divisor,
         'existing_parts': existing_parts,
+        # resource.pk (as string, since JSON object keys are always
+        # strings) -> material_type. Used by JS to auto-default the
+        # unit dropdowns when a material is selected.
+        'resource_material_types': {
+            str(r.pk): r.material_type for r in all_resources
+        },
+        # Flat list for the type-to-filter combobox JS — avoids the
+        # user having to scroll a huge native <select>.
+        'resource_options': [
+            {
+                'id': r.pk,
+                'name': r.resource_name,
+                'category': r.category,
+                'unit': r.unit,
+            }
+            for r in all_resources
+        ],
     }
     return render(request, 'bom/woodpart_add.html', context)
 
@@ -305,6 +322,18 @@ def woodpart_edit(request, pk):
         'unit_choices': unit_choices,
         'divisor': config.wood_divisor,
         'existing_parts': existing_parts,
+        'resource_material_types': {
+            str(r.pk): r.material_type for r in all_resources
+        },
+        'resource_options': [
+            {
+                'id': r.pk,
+                'name': r.resource_name,
+                'category': r.category,
+                'unit': r.unit,
+            }
+            for r in all_resources
+        ],
     }
     return render(request, 'bom/woodpart_edit.html', context)
 

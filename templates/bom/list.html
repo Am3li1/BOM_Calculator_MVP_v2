@@ -189,10 +189,8 @@
             </tr>
             {% for part in group.list %}
             <tr>
-                <td class="ps-4 ps-md-5 text-muted" style="font-size:0.8rem;">
-                    <i class="bi bi-arrow-return-right me-1"></i>
-                </td>
-                <td>
+                <td class="ps-4 ps-md-5">
+                    <i class="bi bi-arrow-return-right me-1 text-muted" style="font-size:0.8rem;"></i>
                     <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                         {{ part.resource.resource_name }}
                     </span>

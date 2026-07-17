@@ -3,18 +3,16 @@
 from django.db import models
 from decimal import Decimal
 
-
 class ResourceCategory(models.Model):
     """
     Stores resource categories as database records.
     Administrators can add/rename/remove without code changes.
     """
-    name = models.CharField(
-        max_length=100,
-        unique=True,
-    )
+    name = models.CharField(max_length=100, unique=True)
     sort_order = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
+    # material_type / default_unit REMOVED — wrong granularity,
+    # Carpentry Materials holds both Teak and Plywood.
 
     class Meta:
         ordering = ['sort_order', 'name']
@@ -23,8 +21,6 @@ class ResourceCategory(models.Model):
 
     def __str__(self):
         return self.name
-
-
 class Resource(models.Model):
     """
     Represents a raw material, labour type, or overhead cost item.
@@ -51,6 +47,22 @@ class Resource(models.Model):
     unit = models.CharField(
         max_length=50,
         help_text="Unit of measurement e.g. cft, sqft, kg, day, nos"
+    )
+
+    MATERIAL_TYPE_CHOICES = [
+        ('solid_wood', 'Solid Wood (CFT formula)'),
+        ('sheet',      'Sheet Material (SFT formula)'),
+        ('other',      'Other / Not Dimensional'),
+    ]
+    material_type = models.CharField(
+        max_length=20,
+        choices=MATERIAL_TYPE_CHOICES,
+        default='other',
+        help_text=(
+            "Drives WoodPart formula selection. Set to 'Solid Wood' for "
+            "Teak/Country Wood (CFT: W×B×L÷divisor), 'Sheet Material' for "
+            "Plywood/MDF/PLPB (SFT: W×L, no divisor)."
+        ),
     )
 
     rate = models.DecimalField(
@@ -211,3 +223,6 @@ class Resource(models.Model):
             'supplier': None,
             'reason':   '',
         }
+    
+
+

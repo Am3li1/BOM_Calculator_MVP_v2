@@ -27,6 +27,10 @@ from apps.bom.models import BOMItem, WoodPart, Part
 from apps.suppliers.models import Supplier
 from apps.imports.models import ImportLog
 
+# Valid dimension units — single source of truth shared by validate_wood
+# (rejects bad WU/BU/LU cells) and import_wood (trusts they're clean).
+_VALID_UNITS = {choice[0] for choice in WoodPart.UNIT_CHOICES}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -328,7 +332,12 @@ def validate_wood(path):
     Checks:
     - Sheet exists and required columns present
     - Product and Resource names not empty (after forward-fill)
-    - Dimensions are numeric and non-negative
+    - Width/Breath always numeric and non-negative; Length only checked
+      for solid_wood resources — sheet materials (Plywood/MDF/PLPB) use
+      Width x Breadth for their SFT formula and never touch Length, so a
+      blank/garbage Length or Length Unit there is not a real error.
+    - Width/Breadth Units always checked; Length Unit only checked for
+      solid_wood resources, for the same reason.
     - Cross-references Products and Resources from the same file
     """
     errors = []
@@ -348,6 +357,17 @@ def validate_wood(path):
 
     valid_products  = _get_product_names_from_file(path)
     valid_resources = _get_resource_names_from_file(path)
+
+    # Resource name (lowercased) -> material_type, for skipping Length
+    # checks on sheet goods. Only resources already saved in the DB are
+    # known here — a resource being imported for the first time in this
+    # same file falls back to 'unknown' and gets the stricter (solid_wood
+    # style) validation, since we can't yet tell what it is.
+    material_types = dict(
+        Resource.objects.filter(active=True)
+        .values_list('resource_name', 'material_type')
+    )
+    material_types = {name.lower(): mt for name, mt in material_types.items()}
 
     for idx, row in df.iterrows():
         excel_row     = idx + 2
@@ -374,7 +394,11 @@ def validate_wood(path):
                 f'"{product_name}": Resource Name is empty.'))
             continue
 
-        for dim_col in ['Width', 'Breath', 'Length']:
+        material_type = material_types.get(resource_name.lower())
+        is_sheet = material_type == 'sheet'
+
+        dim_cols = ['Width', 'Breath'] if is_sheet else ['Width', 'Breath', 'Length']
+        for dim_col in dim_cols:
             val = row.get(dim_col)
             try:
                 if pd.isna(val):
@@ -388,6 +412,16 @@ def validate_wood(path):
                 errors.append(_err(sheet, excel_row,
                     f'"{product_name}" / "{resource_name}": '
                     f'{dim_col} "{val}" is not a valid number.'))
+
+        unit_cols = ([('WU', 'Width'), ('BU', 'Breath')] if is_sheet
+                     else [('WU', 'Width'), ('BU', 'Breath'), ('LU', 'Length')])
+        for unit_col, dim_label in unit_cols:
+            unit_val = _normalize(row.get(unit_col)).lower()
+            if unit_val not in _VALID_UNITS:
+                errors.append(_err(sheet, excel_row,
+                    f'"{product_name}" / "{resource_name}": '
+                    f'{dim_label} Unit ("{unit_val or "blank"}") is not valid. '
+                    f'Must be one of: {", ".join(sorted(_VALID_UNITS))}.'))
 
         product_code = _make_product_code(product_name)
         if (product_name.lower() not in valid_products
@@ -722,6 +756,19 @@ def import_bom(path):
 
 
 def import_wood(path):
+    """
+    Imports the Wood/Ply/MDF dimensions sheet.
+
+    Only called after validate_wood() has passed — WU/BU/LU are
+    therefore guaranteed to already be valid entries from
+    WoodPart.UNIT_CHOICES, so no defaulting/fallback logic is needed
+    here (see validate_wood for the unit checks).
+
+    Length is read and stored for every row, but note it is NOT used
+    in the SFT calculation for sheet materials (Plywood/MDF/PLPB) —
+    WoodPart.calculated_quantity uses Width x Breadth for those.
+    Length only participates in the CFT formula for solid wood.
+    """
     result = {'imported': 0, 'updated': 0, 'skipped': 0, 'errors': []}
 
     df, read_error = _read_sheet(path, 'Wood, Ply MDF')
@@ -743,7 +790,9 @@ def import_wood(path):
             breadth = float(row['Breath'])
             length  = float(row['Length'])
             pieces  = int(float(row.get('Quantity', 1) or 1))
-            if width <= 0 or breadth <= 0 or length <= 0:
+            # Length is allowed to be 0/blank — sheet materials don't
+            # use it. Width and Breadth are required by both formulas.
+            if width <= 0 or breadth <= 0:
                 continue
         except (ValueError, TypeError):
             continue
@@ -760,6 +809,12 @@ def import_wood(path):
             result['skipped'] += 1
             continue
 
+        # WU/BU/LU are trusted here — validate_wood already rejected
+        # any row with a missing/invalid unit before import ever runs.
+        width_unit   = _normalize(row.get('WU')).lower()
+        breadth_unit = _normalize(row.get('BU')).lower()
+        length_unit  = _normalize(row.get('LU')).lower()
+
         # Use update_or_create keyed on (product, resource, part_name).
         # If a matching WoodPart already exists, its dimensions are updated.
         # If no match exists, a new record is created.
@@ -769,13 +824,16 @@ def import_wood(path):
             resource=resource,
             part_name=part_name,
             defaults={
-                'width':   width,
-                'breadth': breadth,
-                'length':  length,
-                'pieces':  pieces,
-                'part':    Part.objects.get_or_create(
-                                product=product, name=part_name
-                           )[0],
+                'width':        width,
+                'width_unit':   width_unit,
+                'breadth':      breadth,
+                'breadth_unit': breadth_unit,
+                'length':       length,
+                'length_unit':  length_unit,
+                'pieces':       pieces,
+                'part':         Part.objects.get_or_create(
+                                    product=product, name=part_name
+                                )[0],
             },
         )
 

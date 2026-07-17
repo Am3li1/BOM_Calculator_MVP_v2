@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — BOM Costing System
 
 > **Living document.** Update this file whenever major features are completed or the roadmap shifts.
-> Last updated: July 2026 — Production deployment complete on Coolify/Docker/PostgreSQL, accessible via Tailscale HTTPS
+> Last updated: July 2026 — Dimension formula split (CFT/SFT by material type) and BOM UI fixes complete, on top of production deployment on Coolify/Docker/PostgreSQL, accessible via Tailscale HTTPS
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Current Version:** MVP v1.0 — Feature-complete for core BOM costing. **Deployed to production.**
 
-**Overall Health:** Functional and deployed to production. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration complete — live on Coolify-managed Postgres. App is reachable over Tailscale via HTTPS at `https://prod-node-01.tail7e0384.ts.net`.
+**Overall Health:** Functional and deployed to production. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration complete — live on Coolify-managed Postgres. App is reachable over Tailscale via HTTPS at `https://prod-node-01.tail7e0384.ts.net`. WoodPart costing now correctly distinguishes solid wood (CFT) from sheet goods (SFT) by material type, with full unit conversion and import-time validation.
 
 ---
 
@@ -66,6 +66,24 @@
 ### Module: BOM Management (`apps.bom`)
 **Status: ✅ Complete**
 - BOM list (viewer), add/edit/remove (admin only)
+- **Parts integration complete** — `Part` model organizes WoodPart entries per product (e.g. Table Top, Leg 1–4); BOM list groups dimension rows by part with item counts. Imported via the `Parts` sheet (`apps/imports/services.py: import_parts`) or created inline from the WoodPart add form.
+
+---
+
+### Module: Dimension Formula Split by Material Type (`apps.bom`, `apps.resources`, `apps.imports`)
+**Status: ✅ Complete**
+
+Previously, `WoodPart.calculated_quantity` used one formula for every material and ignored the per-dimension unit fields entirely (numbers were used as-is, no `in`/`ft`/`mm`/etc conversion). This has been replaced with a material-aware split:
+
+- **`Resource.material_type`** — new field (`solid_wood` / `sheet` / `other`), since `Resource.category` alone can't distinguish them (e.g. "Carpentry Materials" holds both Teak and Plywood).
+- **Solid wood → CFT:** `(Width_in × Breadth_in × Length_ft × Pieces) / wood_divisor`, with real unit conversion via new `apps/core/units.py` (`to_inches`/`to_feet`).
+- **Sheet goods (Plywood/MDF/PLPB) → SFT:** `Width_ft × Breadth_ft × Pieces` — **no divisor, Length unused** (confirmed against real production data; Breadth drives the second dimension, not Length).
+- **`'other'` (unclassified resources)** keep the old unit-naive formula unchanged, so reclassifying nothing doesn't silently change existing costs.
+- **Import validation** (`validate_wood`) now rejects rows with missing/invalid `WU`/`BU`/`LU` unit cells — except it correctly skips the Length-unit check for `sheet` rows, since Length is legitimately unused there (real sheets in the reference workbook use `LU='no'` as a placeholder).
+- **Resource form** (`apps/resources/forms.py`) now exposes `material_type` directly (previously only settable via Django admin/shell) and auto-suggests a Unit (`cft`/`sqft`) when it's changed.
+- **Dimension add/edit forms** — Material field replaced with a type-to-filter, scrollable combobox (vanilla JS, no framework) that auto-defaults the Width/Breadth/Length unit dropdowns based on the selected resource's `material_type`, and greys out the Length field (readonly, with an explanatory hint) for sheet materials.
+- **BOM list table bug fixed** — dimension rows had one more `<td>` than the table had `<th>` columns (a stray icon cell), silently shifting every value one column right (Width showing under Breadth, etc). Fixed by merging the icon into the Material cell.
+- **Regression tests added:** `apps/bom/tests.py` (formula correctness, unit-conversion equivalence, sheet-ignores-Length), `apps/core/tests.py` (unit conversion utility), `apps/imports/tests.py` (unit validation, including the `LU='no'` sheet-goods edge case). 20 tests total, all passing.
 
 ---
 
@@ -90,9 +108,13 @@
 
 ---
 
-### Unit Tests (`apps/imports/tests.py`)
-**Status: ✅ 6 tests passing**
-- Run: `python manage.py test apps.imports.tests`
+### Unit Tests
+**Status: ✅ 20 tests passing** (across `apps/bom`, `apps/core`, `apps/imports`)
+- Run (Windows requires full dotted paths, not package names):
+  `python manage.py test apps.bom.tests apps.core.tests apps.imports.tests`
+- `apps/bom/tests.py` — CFT/SFT formula correctness, unit-conversion equivalence, sheet-goods ignoring Length, legacy `'other'` fallback (5 tests)
+- `apps/core/tests.py` — `to_inches`/`to_feet` conversion utility, invalid-unit rejection (5 tests)
+- `apps/imports/tests.py` — original 6 (effective rate chain, BOM cost, `_sheet_exists`) + 4 new (`validate_wood` unit checks, including the sheet-goods `LU='no'` edge case)
 
 ---
 
@@ -142,8 +164,7 @@ Deployment target changed from the originally planned Hostinger VPS to a **physi
 
 | Priority | Feature                             | File / Location                             | Notes                                                                                                                                                                                                                                 |
 | -------- | ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 🔴 HIGH  | **Parts Module & BOM Integration**  | `apps/bom`, `apps/imports`, `apps/products` | Add support for the **Parts** sheet from the Excel workbook. Display product parts (e.g. Table Top, Leg 1–4, Side Panel) within the BOM and link Wood/Ply/MDF entries to their respective parts. No separate sidebar module required. |
-| 🔴 HIGH  | **Modern UI Redesign (Dark Theme)** | Global templates & static assets            | Redesign the application with a modern dark theme, improved typography, spacing, cards, tables, forms, and responsive layout while preserving existing functionality.|
+| 🔴 HIGH  | **Modern UI Redesign (Dark Theme)** | Global templates & static assets            | Redesign the application with a modern dark theme, improved typography, spacing, cards, tables, forms, and responsive layout while preserving existing functionality. Dimension add/edit forms and the BOM list table got targeted layout/sizing fixes this session — the broader global redesign is still pending.|
 | 🟢 LOW   | **Password reset flow** | `apps/accounts/` | No self-service reset yet |
 | 🟢 LOW   | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
 | 🟢 LOW   | **Audit trail** | New middleware or model mixin | Who changed what and when |
@@ -154,40 +175,15 @@ Deployment target changed from the originally planned Hostinger VPS to a **physi
 ---
 ## Next Development Goal
 
-### Phase 1 – Parts Integration
+### ~~Phase 1 – Parts Integration~~ ✅ Complete
 
-The original Excel workbook contains a **Parts** sheet.
-
-Additionally, the **Wood** and **Ply MDF** sheets reference a **Part** column.
-
-The application should support this workflow.
-
-Requirements:
-
-* Import the Parts sheet.
-* Associate Wood/Ply/MDF records with a Part.
-* Display Parts inside the BOM.
-* Example:
-
-Table
-
-* Table Top
-* Leg 1
-* Leg 2
-* Leg 3
-* Leg 4
-
-Each Wood/Ply/MDF item should clearly indicate which product part it belongs to.
-
-No standalone "Parts" page or sidebar item is required.
-
-Parts exist only to organize the BOM and improve manufacturing clarity.
+The `Part` model, Parts sheet import, WoodPart↔Part linking, and BOM-list grouping by part are all done — see the *Dimension Formula Split* and *BOM Management* sections above.
 
 ---
 
 ### Phase 2 – UI Modernization
 
-After the Parts feature is complete:
+Now that Parts integration and the dimension formula/UI work are complete:
 
 Redesign the entire application.
 
@@ -223,18 +219,26 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Technical Debt
 
-1. **`WoodPart.calculated_quantity` imports `SystemConfig` inside the property** — should be module-level.
+1. ~~**`WoodPart.calculated_quantity` imports `SystemConfig` inside the property**~~ — unchanged in this session, still applies only to the `solid_wood` and `'other'` branches (which need the divisor); the `sheet` branch doesn't call `SystemConfig` at all since it has no divisor.
 2. **Float/Decimal mixing in WoodPart views** — precision risk.
 3. **`bom_item.cost` summed in Python, not SQL** — will degrade with large BOMs.
 4. **No `select_related` on BOM list for supplier links** — potential N+1 queries.
 5. **`_make_product_code` collision risk** — "TEAK WOOD" and "TEAK-WOOD" both produce "TEAK-WOOD".
-6. **`category` on Resource is a plain CharField** — can create categories not in `ResourceCategory`.
+6. **`category` on Resource is still a plain CharField** — can create categories not in `ResourceCategory`. Partially mitigated: material classification (CFT vs SFT vs other) now lives on `Resource.material_type` instead of depending on category, since a single category ("Carpentry Materials") holds both Teak and Plywood. The underlying free-text `category` field itself is unchanged.
 7. **Portfolio cost on dashboard** summed in Python — acceptable for MVP.
+8. **Resource combobox on WoodPart forms loads the full resource list client-side as JSON** — fine at current catalog size (~150 resources); would need server-side search/pagination if the resource count grows substantially.
+9. **`validate_wood`'s material-type-aware unit checks only recognize resources already saved in the DB** — a resource being imported for the first time in the same workbook as its dimensions falls back to strict (solid-wood-style) validation, since its `material_type` isn't known yet at validation time. Not an issue if Resources are always imported before Wood/Dimensions, which is the existing workflow.
 
 ---
 
 ## Recent Changes Log
 
+| Jul 2026 | **Dimension formula split by material type (CFT vs SFT)** — `Resource.material_type` field added; `WoodPart.calculated_quantity` branches solid_wood (unit-converted CFT) / sheet (Width×Breadth SFT, no divisor, Length unused) / other (legacy unit-naive formula preserved) | `apps/resources/models.py`, `apps/bom/models.py`, new `apps/core/units.py` |
+| Jul 2026 | **Import validation extended** — `validate_wood` rejects invalid/missing `WU`/`BU`/`LU` unit cells, skipping the Length-unit check for sheet-material rows (Length is unused there); `import_wood` simplified to trust validated units instead of silently defaulting | `apps/imports/services.py` |
+| Jul 2026 | **Resource form exposes `material_type`** — previously only settable via Django admin/shell; now a dropdown on the Resource create/edit form that auto-suggests a Unit (`cft`/`sqft`) | `apps/resources/forms.py`, `templates/resources/form.html` |
+| Jul 2026 | **WoodPart add/edit forms redesigned** — Material `<select>` replaced with a type-to-filter, scrollable combobox (vanilla JS); Width/Breadth/Length units auto-default based on the selected resource's `material_type`; Length field greys out (readonly) for sheet materials; layout/font fixes (top-aligned dimension rows, larger/thinner fields); product code removed from page headers | `apps/bom/views.py`, `templates/bom/woodpart_add.html`, `templates/bom/woodpart_edit.html` |
+| Jul 2026 | **Fixed BOM list dimensions table column-shift bug** — an extra `<td>` (arrow icon) with no matching `<th>` was silently shifting every value one column right (Width showing under Breadth, etc); merged into the Material cell | `templates/bom/list.html` |
+| Jul 2026 | **Regression test suite added** — 20 tests total across formula correctness, unit conversion, and import unit validation | `apps/bom/tests.py`, `apps/core/tests.py`, `apps/imports/tests.py` |
 | Jul 2026 | Roadmap updated for Version 2 — Next priority is Parts Module and UI/UX redesign after successful production deployment | PROJECT_STATUS.md |
 | Jul 2026 | **Production deployment completed** — Coolify + Docker + PostgreSQL on Debian 12 (`prod-node-01`), accessed via Tailscale HTTPS (`tailscale serve`) | `PROJECT_STATUS.md`, `CLAUDE.md`, Coolify env vars |
 | Jul 2026 | **Deployment target changed again** — Hostinger VPS plan replaced by client's physical Debian 12 office server, managed via Coolify | `PROJECT_STATUS.md`, `CLAUDE.md` |
@@ -283,7 +287,8 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Testing Notes
 
-- **Run:** `python manage.py test apps.imports.tests`
+- **Run:** `python manage.py test apps.bom.tests apps.core.tests apps.imports.tests`
+- **Windows gotcha:** passing just the package name (e.g. `apps.bom` instead of `apps.bom.tests`) crashes with `TypeError: _getfullpathname: path should be string, bytes or os.PathLike, not NoneType` — always use the full dotted path down to the `tests` module.
 - **Shell queries on Windows:** Use semicolons, not commas at top level:
   `python manage.py shell -c "from django.contrib.auth.models import User; u = User.objects.get(username='rose'); print(u.is_staff)"`
 - **Multi-user testing:** Always use incognito/private window for the second account

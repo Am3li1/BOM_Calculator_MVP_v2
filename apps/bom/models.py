@@ -1,5 +1,6 @@
 # apps/bom/models.py
-
+from decimal import Decimal
+from apps.core.units import to_inches, to_feet
 from django.db import models
 from apps.products.models import Product
 from apps.resources.models import Resource
@@ -211,3 +212,50 @@ class WoodPart(models.Model):
     def cost(self):
         """Calculated cost — never stored."""
         return self.calculated_quantity * self.rate
+    
+    @property
+    def calculated_quantity(self):
+        """
+        Quantity is derived from resource.material_type:
+
+          solid_wood -> CFT = (W_in × B_in × L_ft × pieces) / wood_divisor
+          sheet      -> SFT = W_ft × L_ft × pieces   (no divisor; B/H unused)
+          other      -> legacy formula_type-based calculation (unchanged
+                        behaviour for anything not yet classified)
+        """
+        from apps.core.models import SystemConfig
+
+        material_type = self.resource.material_type
+
+        pieces = Decimal(str(self.pieces))
+
+        if material_type == 'solid_wood':
+            w_in = to_inches(self.width, self.width_unit)
+            b_in = to_inches(self.breadth, self.breadth_unit)
+            l_ft = to_feet(self.length, self.length_unit)
+
+            config = SystemConfig.get_config()
+            divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
+
+            return (w_in * b_in * l_ft * pieces) / divisor
+
+        if material_type == 'sheet':
+            w_ft = to_feet(self.width, self.width_unit)
+            b_ft = to_feet(self.breadth, self.breadth_unit)
+            return w_ft * b_ft * pieces
+
+        # material_type == 'other' -> legacy behaviour, unit-naive
+        # (kept as-is so unclassified resources don't silently change cost)
+        config = SystemConfig.get_config()
+        divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
+
+        w = Decimal(str(self.width))
+        b = Decimal(str(self.breadth))
+        h = Decimal(str(self.height)) if self.height else Decimal('1')
+        l = Decimal(str(self.length))
+
+        if self.formula_type == 'area':
+            return (w * l * pieces) / divisor
+        else:
+            effective_h = h if h > 0 else Decimal('1')
+            return (w * b * effective_h * l * pieces) / divisor
