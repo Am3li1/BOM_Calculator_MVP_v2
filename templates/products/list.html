@@ -31,7 +31,7 @@
                         <i class="bi bi-search text-muted"></i>
                     </span>
                     <input type="text" name="search" class="form-control"
-                           placeholder="Product name or code..."
+                           placeholder="Search by product name..."
                            value="{{ search_query }}">
                 </div>
             </div>
@@ -73,8 +73,7 @@
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
-                        <th class="ps-4">Product Code</th>
-                        <th>Product Name</th>
+                        <th class="ps-4">Product Name</th>
                         <th class="text-center">Status</th>
                         <th class="text-center">BOM Items</th>
                         <th class="text-center">Wood Parts</th>
@@ -85,17 +84,8 @@
                     {% for product in products %}
                     <tr>
 
-                        <!-- Code -->
-                        <td class="ps-4">
-                            <code class="font-mono" style="font-size:0.82rem; background:var(--surface-raised);
-                                         color:var(--accent); padding:2px 8px;
-                                         border-radius:4px;">
-                                {{ product.product_code }}
-                            </code>
-                        </td>
-
                         <!-- Name -->
-                        <td style="font-size:0.875rem;">
+                        <td class="ps-4" style="font-size:0.875rem;">
                             {{ product.product_name }}
                         </td>
 
@@ -180,8 +170,7 @@
                                      style="font-size:0.875rem;">
                                     <p>You are about to remove:</p>
                                     <div class="rounded p-2 mb-2" style="background:var(--surface-raised); border:1px solid var(--border);">
-                                        <strong>{{ product.product_code }}</strong>
-                                        — {{ product.product_name }}
+                                        <strong>{{ product.product_name }}</strong>
                                     </div>
                                     <p class="text-muted mb-0">
                                         The product data is preserved (soft delete).

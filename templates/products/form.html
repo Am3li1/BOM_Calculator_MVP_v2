@@ -34,21 +34,6 @@
                         {% endif %}
                     </div>
 
-                    <!-- Product Code -->
-                    <div class="mb-3">
-                        <label class="form-label fw-500" style="font-size:0.875rem;">
-                            {{ form.product_code.label }}
-                            <span class="text-danger">*</span>
-                        </label>
-                        {{ form.product_code }}
-                        {% if form.product_code.errors %}
-                            <div class="text-danger mt-1" style="font-size:0.8rem;">
-                                {{ form.product_code.errors.0 }}
-                            </div>
-                        {% endif %}
-                        <div class="form-text">{{ form.product_code.help_text }}</div>
-                    </div>
-
                     <!-- Active -->
                     <div class="mb-4">
                         <div class="form-check">

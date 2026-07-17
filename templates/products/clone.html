@@ -21,9 +21,6 @@
                     <div class="fw-bold" style="color:var(--text); font-size:1rem;">
                         {{ original.product_name }}
                     </div>
-                    <code class="font-mono" style="font-size:0.82rem; color:var(--accent);">
-                        {{ original.product_code }}
-                    </code>
                     <div class="mt-1" style="font-size:0.8rem; color:var(--text-muted);">
                         {{ original.bom_items.count }} BOM item(s) ·
                         {{ original.wood_parts.count }} wood part(s)
@@ -58,23 +55,6 @@
                                autofocus>
                         <div class="form-text">
                             Give the clone a distinct name.
-                        </div>
-                    </div>
-
-                    <!-- New product code -->
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">
-                            New Product Code
-                        </label>
-                        <input type="text"
-                               name="new_product_code"
-                               class="form-control"
-                               value="{{ suggested_code }}"
-                               placeholder="e.g. DT-MODEL-B"
-                               maxlength="30"
-                               required>
-                        <div class="form-text">
-                            Must be unique. Maximum 30 characters.
                         </div>
                     </div>
 

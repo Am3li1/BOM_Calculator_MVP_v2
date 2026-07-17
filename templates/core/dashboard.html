@@ -139,20 +139,14 @@
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
-                            <th class="ps-3">Code</th>
-                            <th>Product Name</th>
+                            <th class="ps-3">Product Name</th>
                             <th class="pe-3 text-end">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for product in recent_products %}
                         <tr>
-                            <td class="ps-3">
-                                <code style="font-size:0.8rem;">
-                                    {{ product.product_code }}
-                                </code>
-                            </td>
-                            <td>{{ product.product_name }}</td>
+                            <td class="ps-3">{{ product.product_name }}</td>
                             <td class="pe-3 text-end">
                                 {% if product.active %}
                                     <span class="badge bg-success-subtle text-success"

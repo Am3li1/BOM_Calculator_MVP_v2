@@ -1,5 +1,7 @@
 # apps/products/views.py
 
+import re
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
@@ -11,6 +13,33 @@ from .models import Product
 from .forms import ProductForm
 
 
+# ── Product code generation ─────────────────────────────────────────
+# Same slugify algorithm as apps/imports/services.py:_make_product_code
+# — kept in sync deliberately so a manually-created product and an
+# imported one with the same name land on the same code.
+
+def _make_product_code(name):
+    code = re.sub(r'[^A-Za-z0-9]+', '-', name.strip())
+    return code.strip('-').upper()[:30]
+
+
+def _generate_unique_product_code(name):
+    """
+    Slugifies `name` into a code, then resolves collisions by
+    appending -2, -3, etc. Uniqueness is scoped to non-deleted
+    products only (matches the existing business rule: product code
+    uniqueness is enforced among active/non-deleted records).
+    """
+    base = _make_product_code(name)
+    code = base
+    suffix = 2
+    while Product.objects.filter(product_code=code, is_deleted=False).exists():
+        tail = f'-{suffix}'
+        code = f'{base[:30 - len(tail)]}{tail}'
+        suffix += 1
+    return code
+
+
 @login_required
 @admin_required
 def product_list(request):
@@ -19,6 +48,9 @@ def product_list(request):
     products = Product.objects.filter(is_deleted=False)
 
     # ── Search ──────────────────────────────────────────────────────
+    # product_code is no longer shown in the UI, but it's still kept
+    # searchable — some staff may still know/reference old codes from
+    # imports or past exports.
     search_query = request.GET.get('search', '').strip()
     if search_query:
         products = products.filter(
@@ -51,26 +83,31 @@ def product_list(request):
 @admin_required
 def product_create(request):
     """
-    Create a new product.
-    
-    Special case: if a soft-deleted product with the same code exists,
-    restore it and update its details instead of creating a duplicate row.
-    This keeps the database clean and preserves historical BOM data.
+    Create a new product. product_code is generated automatically from
+    product_name — never typed by the user.
+
+    Special case: if a soft-deleted product whose generated code
+    exactly matches this name's code exists, restore it and update its
+    details instead of creating a duplicate row. This keeps the
+    database clean and preserves historical BOM data.
     """
     if request.method == 'POST':
         form = ProductForm(request.POST)
         if form.is_valid():
-            product_code = form.cleaned_data['product_code']
+            name = form.cleaned_data['product_name']
+            candidate_code = _make_product_code(name)
 
-            # ── Check for a soft-deleted product with the same code ──
+            # ── Check for a soft-deleted product with the same
+            #    (unsuffixed) generated code ──
             existing = Product.objects.filter(
-                product_code__iexact=product_code,
+                product_code__iexact=candidate_code,
                 is_deleted=True
             ).first()
 
             if existing:
-                # Restore it: update fields and un-delete
-                existing.product_name = form.cleaned_data['product_name']
+                # Restore it: update fields and un-delete. Reuses the
+                # exact original code rather than generating a new one.
+                existing.product_name = name
                 existing.active = form.cleaned_data['active']
                 existing.is_deleted = False
                 existing.save()
@@ -80,8 +117,9 @@ def product_create(request):
                     f'and updated successfully.'
                 )
             else:
-                # Normal creation
-                product = form.save()
+                product = form.save(commit=False)
+                product.product_code = _generate_unique_product_code(name)
+                product.save()
                 messages.success(
                     request,
                     f'Product "{product.product_name}" created successfully.'
@@ -104,7 +142,11 @@ def product_create(request):
 @login_required
 @admin_required
 def product_edit(request, pk):
-    """Edit an existing product."""
+    """
+    Edit an existing product. product_code is immutable after creation
+    (it's used as an identifier elsewhere — imports, clone-restore
+    matching) and is never shown or editable here.
+    """
     product = get_object_or_404(Product, pk=pk, is_deleted=False)
 
     if request.method == 'POST':
@@ -124,7 +166,7 @@ def product_edit(request, pk):
     return render(request, 'products/form.html', {
         'page_title': f'Edit — {product.product_name}',
         'form': form,
-        'form_title': f'Edit Product: {product.product_code}',
+        'form_title': f'Edit Product: {product.product_name}',
         'submit_label': 'Save Changes',
         'product': product,
     })
@@ -149,6 +191,7 @@ def product_delete(request, pk):
 
     return redirect('products:list')
 
+
 @login_required
 @admin_required
 def clone_product(request, pk):
@@ -157,6 +200,8 @@ def clone_product(request, pk):
 
     GET:  Shows a confirmation form asking for the new product name.
     POST: Performs the clone and redirects to the new product's BOM page.
+    The new product's code is generated automatically from its name —
+    never typed by the user.
 
     The original product is never modified.
     Each cloned BOMItem and WoodPart becomes a completely independent
@@ -164,7 +209,6 @@ def clone_product(request, pk):
     """
     from django.db import transaction
     from apps.bom.models import BOMItem, WoodPart
-    import re
 
     original = get_object_or_404(Product, pk=pk, is_deleted=False)
 
@@ -173,21 +217,10 @@ def clone_product(request, pk):
 
     if request.method == 'POST':
         new_name = request.POST.get('new_product_name', '').strip()
-        new_code = request.POST.get('new_product_code', '').strip()
 
-        # Validation
         errors = []
         if not new_name:
             errors.append('Product name is required.')
-        if not new_code:
-            errors.append('Product code is required.')
-        if new_code and Product.objects.filter(
-            product_code=new_code, is_deleted=False
-        ).exists():
-            errors.append(
-                f'Product code "{new_code}" already exists. '
-                f'Please choose a different code.'
-            )
 
         if errors:
             for error in errors:
@@ -196,7 +229,6 @@ def clone_product(request, pk):
                 'page_title': f'Clone — {original.product_name}',
                 'original': original,
                 'suggested_name': new_name or suggested_name,
-                'suggested_code': new_code,
             }
             return render(request, 'products/clone.html', context)
 
@@ -208,20 +240,15 @@ def clone_product(request, pk):
             with transaction.atomic():
 
                 # Step 1: Create the new Product record
-                # We read the original's field values, then save
-                # as a brand new object by not specifying pk.
                 cloned_product = Product(
                     product_name = new_name,
-                    product_code = new_code,
+                    product_code = _generate_unique_product_code(new_name),
                     active       = original.active,
                     is_deleted   = False,
                 )
                 cloned_product.save()
 
                 # Step 2: Copy all BOM Items
-                # For each BOMItem on the original, create a new
-                # BOMItem pointing to the cloned product.
-                # The resource stays the same — we share the reference.
                 original_bom_items = BOMItem.objects.filter(
                     product=original
                 ).select_related('resource')
@@ -273,13 +300,9 @@ def clone_product(request, pk):
                 f'Clone failed due to an unexpected error: {e}'
             )
 
-    # Generate a suggested product code from the new name
-    suggested_code = f'COPY-{original.product_code}'[:30]
-
     context = {
         'page_title': f'Clone — {original.product_name}',
         'original': original,
         'suggested_name': suggested_name,
-        'suggested_code': suggested_code,
     }
     return render(request, 'products/clone.html', context)
