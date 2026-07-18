@@ -113,7 +113,7 @@ bom_costing/
 ### `apps.costing`
 - Pure calculation views — no models.
 - `costing_list`: all active products.
-- `cost_sheet`: full cost breakdown grouped by category. Grand total = Standard BOM only.
+- `cost_sheet`: full cost breakdown grouped by category. Grand total = Standard BOM + Dimensional BOM.
 - WoodParts shown for reference, NOT added to grand total.
 - Excel export: per-product at `/costing/<pk>/export/`; full workbook at `/costing/export/full/`.
 
