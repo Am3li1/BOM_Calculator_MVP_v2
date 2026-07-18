@@ -22,11 +22,15 @@ def bom_list(request, product_pk):
         product=product
     ).select_related('resource', 'part').order_by('part__name', 'resource__resource_name')
 
-    # Grand total is Standard BOM only.
-    # Dimensions are measurement records — their cost is already
-    # represented in the Standard BOM and must not be added again.
-    total_bom_cost = sum(item.cost for item in bom_items)
-    grand_total    = total_bom_cost
+    # ── Rule change (intentional): Dimensional BOM cost now counts ──
+    # Standard BOM (BOMItem) and Dimensional BOM (WoodPart) are two
+    # distinct, non-overlapping cost buckets — a resource belongs to
+    # ONE or the other for a given product, never both. Grand total is
+    # their sum. (Previously WoodPart cost was reference-only; see
+    # CLAUDE.md for the history of this rule.)
+    total_bom_cost       = sum(item.cost for item in bom_items)
+    total_dimensional_cost = sum(part.cost for part in wood_parts)
+    grand_total          = total_bom_cost + total_dimensional_cost
 
     context = {
         'page_title': f'BOM — {product.product_code}',
@@ -34,6 +38,7 @@ def bom_list(request, product_pk):
         'bom_items': bom_items,
         'wood_parts': wood_parts,
         'total_bom_cost': total_bom_cost,
+        'total_dimensional_cost': total_dimensional_cost,
         'grand_total': grand_total,
     }
     return render(request, 'bom/list.html', context)

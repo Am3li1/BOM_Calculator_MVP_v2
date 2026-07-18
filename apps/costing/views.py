@@ -25,7 +25,9 @@ def costing_list(request):
     products = Product.objects.filter(
         is_deleted=False,
         active=True
-    ).order_by('product_name').prefetch_related('bom_items__resource')
+    ).order_by('product_name').prefetch_related(
+        'bom_items__resource', 'wood_parts__resource'
+    )
 
     if search_query:
         products = products.filter(
@@ -35,10 +37,18 @@ def costing_list(request):
 
     portfolio_total = Decimal('0')
     for product in products:
-        product.total_cost = sum(
+        # Total Product Cost = Standard BOM + Dimensional BOM (see
+        # CLAUDE.md for the history of this rule — it used to be
+        # Standard BOM only).
+        bom_cost = sum(
             (item.cost for item in product.bom_items.all()),
             Decimal('0')
         )
+        dimensional_cost = sum(
+            (part.cost for part in product.wood_parts.all()),
+            Decimal('0')
+        )
+        product.total_cost = bom_cost + dimensional_cost
         portfolio_total += product.total_cost
 
     context = {
@@ -55,11 +65,13 @@ def cost_sheet(request, product_pk):
     """
     Displays the full cost sheet for a single product.
 
-    Cost logic:
-    - Standard BOM is the sole source of product cost.
-    - Dimensions section is informational only — shows measurements,
-      not costs. Its materials are already costed in Standard BOM.
-    - Grand total = Standard BOM total only.
+    Cost logic (rule change — see CLAUDE.md for history):
+    - Standard BOM (BOMItem) and Dimensional BOM (WoodPart) are two
+      distinct, non-overlapping cost buckets.
+    - Grand total = Standard BOM total + Dimensional BOM total.
+    - The category summary / pie chart merges both buckets per
+      category, since a category (e.g. "Carpentry Materials") can
+      have costs from both a BOMItem and a WoodPart line.
     """
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
 
@@ -84,15 +96,34 @@ def cost_sheet(request, product_pk):
     for category, items in bom_by_category.items():
         bom_category_totals[category] = sum(item.cost for item in items)
 
-    # ── Grand total: Standard BOM only ─────────────────────────────
-    # Dimensions are measurement records. Their material cost is already
-    # captured in Standard BOM. Adding them again would double-count.
-    grand_total = sum(bom_category_totals.values())
+    # ── Dimensional BOM: group by category, now genuinely costed ───
+    wood_by_category = defaultdict(list)
+    for part in wood_parts:
+        wood_by_category[part.resource.category].append(part)
 
-    # ── Category summary: BOM only ──────────────────────────────────
+    wood_category_totals = {}
+    for category, parts in wood_by_category.items():
+        wood_category_totals[category] = sum(part.cost for part in parts)
+
+    # ── Totals ───────────────────────────────────────────────────────
+    standard_bom_total    = sum(bom_category_totals.values())
+    dimensional_bom_total = sum(wood_category_totals.values())
+    grand_total            = standard_bom_total + dimensional_bom_total
+
+    # ── Category summary: merge both buckets per category ──────────
+    # A category can have cost from BOTH a BOMItem and a WoodPart
+    # (e.g. "Carpentry Materials" might have hinges in Standard BOM
+    # and Teak Wood in Dimensional BOM) — combine before computing
+    # percentages so the pie chart reflects the true total.
+    combined_category_totals = defaultdict(Decimal)
+    for category, total in bom_category_totals.items():
+        combined_category_totals[category] += total
+    for category, total in wood_category_totals.items():
+        combined_category_totals[category] += total
+
     category_summary = []
     for category, total in sorted(
-        bom_category_totals.items(),
+        combined_category_totals.items(),
         key=lambda x: x[1],
         reverse=True
     ):
@@ -103,27 +134,24 @@ def cost_sheet(request, product_pk):
             'percentage': round(percentage, 1),
         })
 
-    # ── Dimensions: grouped for display only ───────────────────────
-    # No costs calculated here — purely for reference display.
-    wood_by_category = defaultdict(list)
-    for part in wood_parts:
-        wood_by_category[part.resource.category].append(part)
-
     context = {
         'page_title': f'Cost Sheet — {product.product_code}',
         'product': product,
 
         # Standard BOM
-        'bom_by_category':    dict(bom_by_category),
+        'bom_by_category':     dict(bom_by_category),
         'bom_category_totals': bom_category_totals,
+        'standard_bom_total':  standard_bom_total,
 
-        # Dimensions (display only, no costs)
-        'wood_by_category':   dict(wood_by_category),
+        # Dimensional BOM
+        'wood_by_category':     dict(wood_by_category),
+        'wood_category_totals': wood_category_totals,
+        'dimensional_bom_total': dimensional_bom_total,
 
         # Totals
         'grand_total':        grand_total,
 
-        # Category summary (BOM only)
+        # Category summary (merged)
         'category_summary':   category_summary,
     }
     return render(request, 'costing/cost_sheet.html', context)
@@ -377,7 +405,8 @@ def export_full_workbook(request):
 
     write_headers(ws_dims, [
         "Product Code", "Product Name", "Part Name", "Resource",
-        "Width", "Breadth", "Length", "Pieces", "Formula", "Calc. Qty"
+        "Width", "Breadth", "Length", "Pieces", "Formula", "Calc. Qty",
+        "Rate (₹)", "Cost (₹)"
     ])
 
     for i, part in enumerate(wood_parts, start=2):
@@ -392,12 +421,16 @@ def export_full_workbook(request):
             part.pieces,
             part.get_formula_type_display(),
             float(part.calculated_quantity),
+            float(part.rate),
+            float(part.cost),
         ])
         row = ws_dims[ws_dims.max_row]
         row[9].number_format = '#,##0.0000'
+        row[10].number_format = '₹#,##0.00'
+        row[11].number_format = '₹#,##0.00'
         stripe_row(ws_dims, i)
 
-    set_col_widths(ws_dims, [16, 32, 24, 24, 10, 10, 10, 8, 14, 12])
+    set_col_widths(ws_dims, [16, 32, 24, 24, 10, 10, 10, 8, 14, 12, 14, 14])
     apply_border(ws_dims)
     ws_dims.freeze_panes = "A2"
 
@@ -407,32 +440,48 @@ def export_full_workbook(request):
     ws_summary = wb.create_sheet("CostSummary")
 
     write_headers(ws_summary, [
-        "Product Code", "Product Name", "BOM Items",
+        "Product Code", "Product Name", "BOM Items", "Dimension Entries",
+        "Standard BOM Cost (₹)", "Dimensional BOM Cost (₹)",
         "Total Cost (₹)", "Active"
     ])
 
-    # Group BOM items by product to calculate per-product totals.
-    # We use a dict keyed by product pk.
+    # Group BOM items AND wood parts by product to calculate
+    # per-product totals. A product's Total Cost is now the sum of
+    # both buckets (rule change — see CLAUDE.md for history).
     from collections import defaultdict
-    product_costs = defaultdict(lambda: {'items': 0, 'total': Decimal('0')})
+    product_costs = defaultdict(lambda: {
+        'items': 0, 'bom_total': Decimal('0'),
+        'dimensions': 0, 'dimensional_total': Decimal('0'),
+    })
 
     for item in bom_items:
         pk = item.product.pk
         product_costs[pk]['product'] = item.product
         product_costs[pk]['items'] += 1
-        product_costs[pk]['total'] += item.cost
+        product_costs[pk]['bom_total'] += item.cost
 
-    # Also include products that have no BOM items yet
+    for part in wood_parts:
+        pk = part.product.pk
+        product_costs[pk]['product'] = part.product
+        product_costs[pk]['dimensions'] += 1
+        product_costs[pk]['dimensional_total'] += part.cost
+
+    # Also include products that have no BOM/dimension data yet
     # so every product appears in the summary.
     all_products_map = {p.pk: p for p in products}
 
     summary_rows = []
     for pk, p in all_products_map.items():
         data = product_costs.get(pk, {})
+        bom_total = data.get('bom_total', Decimal('0'))
+        dimensional_total = data.get('dimensional_total', Decimal('0'))
         summary_rows.append({
-            'product': p,
-            'items':   data.get('items', 0),
-            'total':   data.get('total', Decimal('0')),
+            'product':          p,
+            'items':            data.get('items', 0),
+            'dimensions':       data.get('dimensions', 0),
+            'bom_total':        bom_total,
+            'dimensional_total': dimensional_total,
+            'total':            bom_total + dimensional_total,
         })
 
     # Sort by total cost descending so most expensive products are at the top
@@ -443,11 +492,16 @@ def export_full_workbook(request):
             row_data['product'].product_code,
             row_data['product'].product_name,
             row_data['items'],
+            row_data['dimensions'],
+            float(row_data['bom_total']),
+            float(row_data['dimensional_total']),
             float(row_data['total']),
             "Yes" if row_data['product'].active else "No",
         ])
         row = ws_summary[ws_summary.max_row]
-        row[3].number_format = '₹#,##0.00'
+        row[4].number_format = '₹#,##0.00'
+        row[5].number_format = '₹#,##0.00'
+        row[6].number_format = '₹#,##0.00'
         stripe_row(ws_summary, i)
 
     # Grand total row at the bottom of cost summary
@@ -456,6 +510,9 @@ def export_full_workbook(request):
     ws_summary.append([
         "TOTAL", "",
         sum(r['items'] for r in summary_rows),
+        sum(r['dimensions'] for r in summary_rows),
+        float(sum(r['bom_total'] for r in summary_rows)),
+        float(sum(r['dimensional_total'] for r in summary_rows)),
         float(grand_total_all),
         "",
     ])
@@ -465,9 +522,11 @@ def export_full_workbook(request):
     for cell in gt_row:
         cell.fill = grand_fill
         cell.font = grand_font
-    gt_row[3].number_format = '₹#,##0.00'
+    gt_row[4].number_format = '₹#,##0.00'
+    gt_row[5].number_format = '₹#,##0.00'
+    gt_row[6].number_format = '₹#,##0.00'
 
-    set_col_widths(ws_summary, [18, 38, 12, 18, 8])
+    set_col_widths(ws_summary, [18, 38, 12, 16, 20, 22, 18, 8])
     apply_border(ws_summary)
     ws_summary.freeze_panes = "A2"
 

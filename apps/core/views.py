@@ -25,10 +25,15 @@ def dashboard(request):
     total_wood_parts = WoodPart.objects.count()
     total_suppliers  = Supplier.objects.filter(active=True).count()
 
-    # Portfolio cost — sum of all BOM item costs across all products
-    # Uses effective_rate (supplier/override aware) via Python property
+    # Portfolio cost = Standard BOM + Dimensional BOM, across all
+    # products (rule change — see CLAUDE.md for history).
+    # Uses effective_rate (supplier/override aware) via Python property.
     all_bom_items    = BOMItem.objects.select_related('resource').all()
-    portfolio_cost   = sum(item.cost for item in all_bom_items)
+    all_wood_parts   = WoodPart.objects.select_related('resource').all()
+    portfolio_cost   = (
+        sum(item.cost for item in all_bom_items)
+        + sum(part.cost for part in all_wood_parts)
+    )
 
     # ── Recently Updated Resources ──────────────────────────────────
     recent_resources = Resource.objects.filter(

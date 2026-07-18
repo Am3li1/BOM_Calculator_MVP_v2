@@ -144,20 +144,25 @@
 </div>
 
 
-<!-- ══ DIMENSIONS TABLE ════════════════════════════════════════════ -->
+<!-- ══ DIMENSIONAL BOM TABLE ═══════════════════════════════════════ -->
 <div class="content-card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>
             <i class="bi bi-rulers me-2 text-info"></i>
-            Dimensions
+            Dimensional BOM
             <span class="badge ms-1" style="font-size:0.75rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                 {{ wood_parts.count }} part{{ wood_parts.count|pluralize }}
             </span>
         </span>
-        <a href="{% url 'bom:wood_add' product_pk=product.pk %}"
-           class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-lg me-1"></i> Add Dimension
-        </a>
+        <div class="d-flex align-items-center gap-3">
+            <strong class="font-mono" style="color:var(--text);">
+                Total: ₹{{ total_dimensional_cost|floatformat:2 }}
+            </strong>
+            <a href="{% url 'bom:wood_add' product_pk=product.pk %}"
+               class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-lg me-1"></i> Add Dimension
+            </a>
+        </div>
     </div>
 
     {% if wood_parts %}
@@ -172,6 +177,8 @@
                 <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
                 <th class="text-end">Calc Qty</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end">Cost (₹)</th>
                 <th class="text-end pe-4">Actions</th>
             </tr>
         </thead>
@@ -179,7 +186,7 @@
             {% regroup wood_parts by part as part_groups %}
             {% for group in part_groups %}
             <tr style="background:var(--surface-raised);">
-                <td colspan="7" class="ps-4 fw-semibold" style="font-size:0.85rem;">
+                <td colspan="9" class="ps-4 fw-semibold" style="font-size:0.85rem;">
                     <i class="bi bi-box-seam me-1 text-muted"></i>
                     {{ group.grouper.name|default:"Ungrouped" }}
                     <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
@@ -194,6 +201,13 @@
                     <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
                         {{ part.resource.resource_name }}
                     </span>
+                    {% if part.formula_source == 'woodpart_custom' %}
+                    <i class="bi bi-calculator text-primary ms-1"
+                       style="font-size:0.7rem;" title="Custom formula (this entry)"></i>
+                    {% elif part.formula_source == 'resource_custom' %}
+                    <i class="bi bi-calculator text-muted ms-1"
+                       style="font-size:0.7rem;" title="Custom formula (resource default)"></i>
+                    {% endif %}
                 </td>
 
                 <td class="text-end" style="font-size:0.82rem;">
@@ -220,6 +234,14 @@
                     <i class="bi bi-lock-fill text-muted" style="font-size:0.65rem;" title="Auto-calculated"></i>
                 </td>
 
+                <td class="text-end text-muted" style="font-size:0.85rem;">
+                    {{ part.rate|floatformat:2 }}
+                </td>
+
+                <td class="text-end fw-semibold" style="font-size:0.85rem;">
+                    {{ part.cost|floatformat:2 }}
+                </td>
+
                 <td class="text-end pe-4">
                     <div class="d-flex gap-1 justify-content-end">
                         <a href="{% url 'bom:wood_edit' pk=part.pk %}"
@@ -240,6 +262,19 @@
             {% endfor %}
             {% endfor %}
         </tbody>
+        <tfoot>
+            <tr style="background:var(--surface-raised);">
+                <td colspan="7"
+                    class="ps-4 fw-semibold text-end pe-3">
+                    Dimensional BOM Total
+                </td>
+                <td class="text-end fw-bold"
+                    style="color:var(--text); font-size:1rem;">
+                    ₹{{ total_dimensional_cost|floatformat:2 }}
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
     </div>
 
@@ -267,7 +302,7 @@
                 Total Product Cost
             </div>
             <div class="text-muted" style="font-size:0.8rem;">
-                Standard BOM only · Dimensions are for reference
+                Standard BOM (₹{{ total_bom_cost|floatformat:2 }}) + Dimensional BOM (₹{{ total_dimensional_cost|floatformat:2 }})
             </div>
         </div>
         <div class="font-mono" style="font-size:1.5rem; font-weight:700; color:var(--text);">

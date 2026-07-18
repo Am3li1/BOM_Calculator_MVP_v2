@@ -257,25 +257,19 @@
         <span class="fw-semibold">Standard BOM Total</span>
         <span class="fw-bold font-mono"
             style="font-size:1.1rem; color:var(--text);">
-            ₹{{ grand_total|floatformat:2 }}
+            ₹{{ standard_bom_total|floatformat:2 }}
         </span>
     </div>
 </div>
 {% endif %}
 
 
-<!-- ── Dimensions (reference only) ─────────────────────────────── -->
+<!-- ── Dimensional BOM ──────────────────────────────────────────── -->
 {% if wood_by_category %}
 <div class="content-card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span>
-            <i class="bi bi-rulers me-2 text-info"></i>
-            Dimensions
-            <span class="text-muted ms-2"
-                  style="font-size:0.78rem; font-weight:400;">
-                Reference only — costs captured in Standard BOM
-            </span>
-        </span>
+    <div class="card-header">
+        <i class="bi bi-rulers me-2 text-info"></i>
+        Dimensional BOM Costs
     </div>
 
     {% for category, parts in wood_by_category.items %}
@@ -293,7 +287,9 @@
                 <th class="text-end">Breadth</th>
                 <th class="text-end">Length</th>
                 <th class="text-end">Pcs</th>
-                <th class="text-end pe-4">Calc Qty</th>
+                <th class="text-end">Calc Qty</th>
+                <th class="text-end">Rate (₹)</th>
+                <th class="text-end pe-4">Cost (₹)</th>
             </tr>
         </thead>
         <tbody>
@@ -331,23 +327,44 @@
                     style="font-size:0.82rem;">
                     {{ part.pieces }}
                 </td>
-                <td class="text-end pe-4"
+                <td class="text-end"
                     style="font-size:0.82rem;">
                     {{ part.calculated_quantity|floatformat:4 }}
+                </td>
+                <td class="text-end text-muted"
+                    style="font-size:0.82rem;">
+                    {{ part.rate|floatformat:2 }}
+                </td>
+                <td class="text-end pe-4 fw-semibold"
+                    style="font-size:0.82rem;">
+                    {{ part.cost|floatformat:2 }}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
+        <tfoot>
+            <tr style="background:var(--surface-raised);">
+                <td colspan="6"
+                    class="ps-4 text-end fw-semibold"
+                    style="font-size:0.8rem; color:var(--text-muted);">
+                    {{ category }} subtotal
+                </td>
+                <td class="text-end pe-4 fw-bold" colspan="2">
+                    ₹{{ wood_category_totals|get_item:category|floatformat:2 }}
+                </td>
+            </tr>
+        </tfoot>
     </table>
     <hr class="my-0" style="border-color:var(--border);">
     {% endfor %}
 
-    <div class="px-4 py-3"
-         style="background:var(--surface-raised); border-top:1px solid var(--border);">
-        <span style="font-size:0.8rem; color:var(--text-muted);">
-            <i class="bi bi-info-circle me-1"></i>
-            Dimension costs are included in the Standard BOM above.
-            This section shows physical measurements only.
+    <div class="d-flex justify-content-between align-items-center
+                px-4 py-3"
+         style="background:var(--surface-raised); border-top:2px solid var(--border);">
+        <span class="fw-semibold">Dimensional BOM Total</span>
+        <span class="fw-bold font-mono"
+            style="font-size:1.1rem; color:var(--text);">
+            ₹{{ dimensional_bom_total|floatformat:2 }}
         </span>
     </div>
 </div>
