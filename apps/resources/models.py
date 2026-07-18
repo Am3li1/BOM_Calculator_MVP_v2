@@ -21,6 +21,33 @@ class ResourceCategory(models.Model):
 
     def __str__(self):
         return self.name
+    
+    @classmethod
+    def get_available_names(cls):
+        """
+        Every category name that should appear in a category dropdown:
+        active ResourceCategory rows, PLUS any category name actually
+        in use on a Resource but not (yet) registered as a
+        ResourceCategory — e.g. categories that came in via Excel
+        import, which write directly to Resource.category as free
+        text and don't create a ResourceCategory row.
+
+        Without this fallback, the Add/Edit Resource form's dropdown
+        only shows what's in ResourceCategory — which can be empty or
+        incomplete even when Resources already have real category
+        values, making it impossible to pick an existing category for
+        a new resource. Returns a sorted list of plain name strings.
+        """
+        db_categories = cls.objects.filter(
+            active=True
+        ).values_list('name', flat=True)
+
+        in_use_categories = Resource.objects.exclude(
+            category=''
+        ).values_list('category', flat=True).distinct()
+
+        return sorted(set(list(db_categories) + list(in_use_categories)))
+    
 class Resource(models.Model):
     """
     Represents a raw material, labour type, or overhead cost item.
@@ -96,20 +123,6 @@ class Resource(models.Model):
         )
     )
 
-    # ── Custom dimension formula ──────────────────────────────────
-    formula_expression = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text=(
-            "Optional. A custom formula overriding the default "
-            "Material Type formula for WoodPart quantity, e.g. "
-            "\"width_in * breadth_in * length_ft * pieces / divisor\". "
-            "Leave blank to use the built-in Solid Wood (CFT) / Sheet "
-            "(SFT) / Other formula based on Material Type. "
-            "Evaluated with a safe expression parser — no arbitrary "
-            "code execution."
-        ),
-    )
 
     active = models.BooleanField(default=True)
 

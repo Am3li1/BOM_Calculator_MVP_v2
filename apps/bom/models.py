@@ -262,39 +262,36 @@ class WoodPart(models.Model):
     @property
     def calculated_quantity(self):
         """
-        Quantity resolution order (most specific wins):
+        Quantity resolution order:
 
           1. self.formula_expression, if set — a custom formula for
              THIS WoodPart line only.
-          2. resource.formula_expression, if set — a custom formula
-             shared by every WoodPart using this resource.
-          3. Built-in formula by resource.material_type:
+          2. Built-in formula by resource.material_type:
                solid_wood -> CFT = (W_in × B_in × L_ft × pieces) / 144
                sheet      -> SFT = W_ft × B_ft × pieces   (Length unused)
                other      -> legacy formula_type-based calculation
                              (unchanged behaviour for anything not yet
                              classified and without a custom formula)
 
-        Both custom-formula tiers are evaluated the same way — safely,
-        via apps/core/safe_eval.py — and share the same variable set
-        (see _formula_variables). Neither has access to a 'divisor'
-        variable; any division constant goes directly in the formula
-        text.
+        (Resource-level formula_expression was removed — there is no
+        longer a per-resource formula tier. Custom formulas are set
+        per WoodPart line only.)
+
+        The custom-formula tier is evaluated safely via
+        apps/core/safe_eval.py (see _formula_variables for the
+        available variable set). There is no 'divisor' variable; any
+        division constant goes directly in the formula text.
         """
         woodpart_formula = (self.formula_expression or '').strip()
-        resource_formula = (self.resource.formula_expression or '').strip()
-        custom_formula = woodpart_formula or resource_formula
 
-        if custom_formula:
+        if woodpart_formula:
             from apps.core.safe_eval import evaluate_formula, FormulaError
 
             variables = self._formula_variables()
-            source = 'this dimension entry' if woodpart_formula else \
-                f'resource "{self.resource.resource_name}"'
             try:
-                result = evaluate_formula(custom_formula, variables)
+                result = evaluate_formula(woodpart_formula, variables)
             except FormulaError as e:
-                raise FormulaError(f'Formula error ({source}): {e}')
+                raise FormulaError(f'Formula error (this dimension entry): {e}')
             return Decimal(str(result))
 
         material_type = self.resource.material_type
@@ -328,12 +325,10 @@ class WoodPart(models.Model):
     def formula_source(self):
         """
         Which tier actually produced calculated_quantity — for UI
-        badges ("this entry" / "resource default" / "built-in") and
-        debugging. Mirrors the precedence in calculated_quantity;
-        keep the two in sync if that logic ever changes.
+        badges ("this entry" / "built-in") and debugging. Mirrors the
+        precedence in calculated_quantity; keep the two in sync if
+        that logic ever changes.
         """
         if (self.formula_expression or '').strip():
             return 'woodpart_custom'
-        if (self.resource.formula_expression or '').strip():
-            return 'resource_custom'
         return 'material_type_default'

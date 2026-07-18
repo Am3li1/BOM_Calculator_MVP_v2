@@ -84,9 +84,12 @@ def resource_create(request):
     POST → validates and saves new resource
     """
     # Fetch categories from database for the dropdown
-    categories = ResourceCategory.objects.filter(
-        active=True
-    ).order_by('sort_order', 'name')
+    # Categories for the dropdown — same merged source as the
+    # Resources list filter (active ResourceCategory rows + any
+    # category already in use on a Resource). The old version only
+    # queried ResourceCategory, so the dropdown could be empty even
+    # when 100+ resources already had real categories.
+    categories = ResourceCategory.get_available_names()
 
     if request.method == 'POST':
         form = ResourceForm(request.POST, categories=categories)
@@ -120,9 +123,7 @@ def resource_edit(request, pk):
     """
     resource = get_object_or_404(Resource, pk=pk)
 
-    categories = ResourceCategory.objects.filter(
-        active=True
-    ).order_by('sort_order', 'name')
+    categories = ResourceCategory.get_available_names()
 
     if request.method == 'POST':
         form = ResourceForm(

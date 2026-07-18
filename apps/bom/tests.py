@@ -106,75 +106,12 @@ class WoodPartCalculatedQuantityTests(TestCase):
         )
 
 
-class WoodPartCustomFormulaTests(TestCase):
+class WoodPartFormulaPrecedenceTests(TestCase):
     """
-    Regression tests for the per-Resource custom formula_expression
-    override — must take priority over the built-in material_type
-    formulas, and must fail loudly (not silently) on a bad formula.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.product = Product.objects.create(
-            product_code='TEST-CF', product_name='Custom Formula Product'
-        )
-        cls.custom_resource = Resource.objects.create(
-            resource_name='Special Veneer', category='Carpentry Materials',
-            material_type='sheet',  # would normally use SFT (W x B)
-            unit='sqft', rate=Decimal('50'),
-            formula_expression='width_ft * length_ft * pieces / 2',
-        )
-
-    def test_custom_formula_overrides_material_type_default(self):
-        # If material_type='sheet' default (W x B) were used, this
-        # would ignore Length. The custom formula uses Length instead,
-        # proving the override takes priority.
-        wp = WoodPart(
-            product=self.product, resource=self.custom_resource, part_name='Panel',
-            width=4, width_unit='ft',
-            breadth=999, breadth_unit='ft',   # deliberately absurd — must be ignored
-            length=8, length_unit='ft',
-            pieces=1,
-        )
-        # width_ft * length_ft * pieces / 2 = 4 * 8 * 1 / 2 = 16
-        self.assertAlmostEqual(float(wp.calculated_quantity), 16.0, places=6)
-
-    def test_bad_custom_formula_raises_loudly(self):
-        from apps.core.safe_eval import FormulaError
-
-        bad_resource = Resource.objects.create(
-            resource_name='Broken Formula Resource', category='Miscellaneous',
-            material_type='other', unit='nos', rate=Decimal('10'),
-            formula_expression='width_in * undefined_variable',
-        )
-        wp = WoodPart(
-            product=self.product, resource=bad_resource, part_name='X',
-            width=1, width_unit='in', breadth=1, breadth_unit='in',
-            length=1, length_unit='ft', pieces=1,
-        )
-        with self.assertRaises(FormulaError):
-            wp.calculated_quantity
-
-    def test_blank_formula_falls_back_to_material_type_default(self):
-        # Sanity check: a resource WITHOUT a custom formula still uses
-        # the normal solid_wood/sheet/other branching — the override
-        # mechanism doesn't leak into resources that don't set it.
-        plain_sheet = Resource.objects.create(
-            resource_name='Plain MDF', category='Carpentry Materials',
-            material_type='sheet', unit='sqft', rate=Decimal('60'),
-        )
-        wp = WoodPart(
-            product=self.product, resource=plain_sheet, part_name='Panel',
-            width=4, width_unit='ft', breadth=8, breadth_unit='ft',
-            length=999, length_unit='ft', pieces=1,
-        )
-        self.assertAlmostEqual(float(wp.calculated_quantity), 32.0, places=6)
-
-
-class WoodPartLevelFormulaPrecedenceTests(TestCase):
-    """
-    Regression tests for the three-tier formula precedence:
-    WoodPart.formula_expression > Resource.formula_expression >
+    Regression tests for WoodPart.formula_expression, the only
+    custom-formula tier that exists (resource-level formula_expression
+    was removed — see CLAUDE.md / migration 0008 in the resources app).
+    Precedence is: WoodPart.formula_expression, if set, else the
     built-in material_type formula.
     """
 
@@ -183,18 +120,17 @@ class WoodPartLevelFormulaPrecedenceTests(TestCase):
         cls.product = Product.objects.create(
             product_code='TEST-WP', product_name='WoodPart Formula Product'
         )
-        cls.resource_with_formula = Resource.objects.create(
-            resource_name='Veneer With Resource Formula',
-            category='Carpentry Materials', material_type='sheet',
-            unit='sqft', rate=Decimal('50'),
-            formula_expression='width_ft * length_ft * pieces / 2',
+        cls.plain_sheet = Resource.objects.create(
+            resource_name='Plain Sheet', category='Carpentry Materials',
+            material_type='sheet', unit='sqft', rate=Decimal('60'),
         )
 
-    def test_woodpart_formula_overrides_resource_formula(self):
-        # Resource formula would give: 4 * 8 * 1 / 2 = 16
-        # WoodPart formula must win instead: 4 * 8 * 1 / 4 = 8
+    def test_woodpart_formula_overrides_material_type_default(self):
+        # material_type='sheet' default (W x B) would ignore Length.
+        # The custom formula uses Length instead, proving the override
+        # takes priority: 4 * 8 * 1 / 4 = 8
         wp = WoodPart(
-            product=self.product, resource=self.resource_with_formula,
+            product=self.product, resource=self.plain_sheet,
             part_name='Panel',
             width=4, width_unit='ft', breadth=999, breadth_unit='ft',
             length=8, length_unit='ft', pieces=1,
@@ -203,28 +139,24 @@ class WoodPartLevelFormulaPrecedenceTests(TestCase):
         self.assertAlmostEqual(float(wp.calculated_quantity), 8.0, places=6)
         self.assertEqual(wp.formula_source, 'woodpart_custom')
 
-    def test_blank_woodpart_formula_falls_back_to_resource_formula(self):
-        # No WoodPart-level formula set -> falls through to the
-        # resource's formula (not the built-in sheet SFT formula).
+    def test_blank_woodpart_formula_falls_back_to_material_type_default(self):
+        # No WoodPart-level formula set -> falls straight through to
+        # the built-in sheet SFT formula (W x B, Length ignored).
         wp = WoodPart(
-            product=self.product, resource=self.resource_with_formula,
+            product=self.product, resource=self.plain_sheet,
             part_name='Panel',
-            width=4, width_unit='ft', breadth=999, breadth_unit='ft',
-            length=8, length_unit='ft', pieces=1,
+            width=4, width_unit='ft', breadth=8, breadth_unit='ft',
+            length=999, length_unit='ft', pieces=1,
         )
-        # width_ft * length_ft * pieces / 2 = 4 * 8 * 1 / 2 = 16
-        self.assertAlmostEqual(float(wp.calculated_quantity), 16.0, places=6)
-        self.assertEqual(wp.formula_source, 'resource_custom')
+        self.assertAlmostEqual(float(wp.calculated_quantity), 32.0, places=6)
+        self.assertEqual(wp.formula_source, 'material_type_default')
 
     def test_bad_woodpart_formula_raises_loudly(self):
         from apps.core.safe_eval import FormulaError
 
-        plain_sheet = Resource.objects.create(
-            resource_name='Yet Another MDF', category='Carpentry Materials',
-            material_type='sheet', unit='sqft', rate=Decimal('60'),
-        )
         wp = WoodPart(
-            product=self.product, resource=plain_sheet, part_name='Panel',
+            product=self.product, resource=self.plain_sheet,
+            part_name='Panel',
             width=1, width_unit='ft', breadth=1, breadth_unit='ft',
             length=1, length_unit='ft', pieces=1,
             formula_expression='width_ft * nonsense_variable',
@@ -237,37 +169,12 @@ class WoodPartLevelFormulaPrecedenceTests(TestCase):
         # referencing it must raise, not silently resolve to 144.
         from apps.core.safe_eval import FormulaError
 
-        plain_sheet = Resource.objects.create(
-            resource_name='Divisor Test MDF', category='Carpentry Materials',
-            material_type='sheet', unit='sqft', rate=Decimal('60'),
-        )
         wp = WoodPart(
-            product=self.product, resource=plain_sheet, part_name='Panel',
+            product=self.product, resource=self.plain_sheet,
+            part_name='Panel',
             width=1, width_unit='ft', breadth=1, breadth_unit='ft',
             length=1, length_unit='ft', pieces=1,
             formula_expression='width_ft * breadth_ft * pieces / divisor',
         )
         with self.assertRaises(FormulaError):
             wp.calculated_quantity
-
-    def test_formula_source_reflects_precedence_tier(self):
-        wp_builtin = WoodPart(
-            product=self.product,
-            resource=Resource.objects.create(
-                resource_name='Plain Sheet 2', category='Carpentry Materials',
-                material_type='sheet', unit='sqft', rate=Decimal('60'),
-            ),
-            part_name='Panel', width=4, breadth=8, length=1, pieces=1,
-        )
-        wp_resource = WoodPart(
-            product=self.product, resource=self.resource_with_formula,
-            part_name='Panel', width=4, breadth=8, length=1, pieces=1,
-        )
-        wp_woodpart = WoodPart(
-            product=self.product, resource=self.resource_with_formula,
-            part_name='Panel', width=4, breadth=8, length=1, pieces=1,
-            formula_expression='width * breadth * pieces',
-        )
-        self.assertEqual(wp_builtin.formula_source, 'material_type_default')
-        self.assertEqual(wp_resource.formula_source, 'resource_custom')
-        self.assertEqual(wp_woodpart.formula_source, 'woodpart_custom')
