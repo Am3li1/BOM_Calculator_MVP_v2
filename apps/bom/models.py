@@ -112,14 +112,14 @@ class WoodPart(models.Model):
     """
 
     UNIT_CHOICES = [
-        ('in',   'Inches'),
-        ('ft',   'Feet'),
-        ('sqft', 'Square Feet'),
-        ('cft',  'Cubic Feet'),
-        ('mm',   'Millimeters'),
         ('cm',   'Centimeters'),
+        ('cft',  'Cubic Feet'),
+        ('ft',   'Feet'),
+        ('in',   'Inches'),
         ('m',    'Meters'),
+        ('mm',   'Millimeters'),
         ('nos',  'Numbers'),
+        ('sqft', 'Square Feet'),
     ]
 
     FORMULA_CHOICES = [

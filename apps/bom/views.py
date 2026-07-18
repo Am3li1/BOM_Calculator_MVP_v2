@@ -55,9 +55,26 @@ def bom_add(request, product_pk):
         product=product
     ).values_list('resource_id', flat=True)
 
-    available_resources = Resource.objects.filter(
-        active=True
-    ).exclude(id__in=existing_resource_ids)
+    available_resources = list(
+        Resource.objects.filter(
+            active=True
+        ).exclude(id__in=existing_resource_ids)
+    )
+
+    def _resource_sort_key(resource):
+        # Letters-first alphabetical by name (case-insensitive);
+        # names starting with a digit/symbol sort after — matches
+        # the same rule used for the Category dropdown. Flat by
+        # name, NOT grouped by category (that was the actual bug —
+        # Resource's default Meta.ordering is category-first).
+        first_char = resource.resource_name.strip()[:1]
+        return (
+            (0, resource.resource_name.lower())
+            if first_char.isalpha()
+            else (1, resource.resource_name.lower())
+        )
+
+    available_resources.sort(key=_resource_sort_key)
 
     if request.method == 'POST':
         resource_id = request.POST.get('resource')
@@ -143,16 +160,16 @@ def woodpart_add(request, product_pk):
 
     # Unit choices passed to template so we don't hardcode them there
     unit_choices = [
-        ('in',   'Inches'),
-        ('ft',   'Feet'),
-        ('sqft', 'Square Feet'),
-        ('cft',  'Cubic Feet'),
-        ('mm',   'Millimeters'),
         ('cm',   'Centimeters'),
+        ('cft',  'Cubic Feet'),
+        ('ft',   'Feet'),
+        ('in',   'Inches'),
         ('m',    'Meters'),
+        ('mm',   'Millimeters'),
         ('nos',  'Numbers'),
+        ('sqft', 'Square Feet'),
     ]
-
+    
     if request.method == 'POST':
         from .models import WoodPart
         from apps.core.safe_eval import FormulaError

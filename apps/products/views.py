@@ -48,9 +48,6 @@ def product_list(request):
     products = Product.objects.filter(is_deleted=False)
 
     # ── Search ──────────────────────────────────────────────────────
-    # product_code is no longer shown in the UI, but it's still kept
-    # searchable — some staff may still know/reference old codes from
-    # imports or past exports.
     search_query = request.GET.get('search', '').strip()
     if search_query:
         products = products.filter(
@@ -58,12 +55,33 @@ def product_list(request):
             Q(product_code__icontains=search_query)
         )
 
-    # ── Status Filter ────────────────────────────────────────────────
+    # ── Status Filter ─────────────────────────────────────────────────
     status_filter = request.GET.get('status', '')
     if status_filter == 'active':
         products = products.filter(active=True)
     elif status_filter == 'inactive':
         products = products.filter(active=False)
+
+    # ── Sort ─────────────────────────────────────────────────────────
+    # ?sort=name_asc / name_desc switches to a flat, letters-first
+    # alphabetical sort by product_name — digit-led names (e.g.
+    # "3-Door Wardrobe") sort after letters.
+    sort = request.GET.get('sort', '')
+
+    if sort in ('name_asc', 'name_desc'):
+        products = list(products)
+
+        def _sort_key(product):
+            first_char = product.product_name.strip()[:1]
+            return (
+                (0, product.product_name.lower())
+                if first_char.isalpha()
+                else (1, product.product_name.lower())
+            )
+
+        products.sort(key=_sort_key, reverse=(sort == 'name_desc'))
+
+    next_sort = 'name_desc' if sort == 'name_asc' else 'name_asc'
 
     paginator = Paginator(products, 25)
     page_obj  = paginator.get_page(request.GET.get('page'))
@@ -74,7 +92,9 @@ def product_list(request):
         'page_obj': page_obj,
         'search_query': search_query,
         'status_filter': status_filter,
-        'total_count': products.count(),
+        'total_count': len(products) if isinstance(products, list) else products.count(),
+        'sort': sort,
+        'next_sort': next_sort,
     }
     return render(request, 'products/list.html', context)
 

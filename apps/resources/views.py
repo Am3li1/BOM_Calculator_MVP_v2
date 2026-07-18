@@ -34,35 +34,42 @@ def resource_list(request):
     if category_filter:
         resources = resources.filter(category=category_filter)
 
-    # ── Filter by Status ────────────────────────────────────────────
+    # ── Filter by Status ─────────────────────────────────────────────
     status_filter = request.GET.get('status', '')
     if status_filter == 'active':
         resources = resources.filter(active=True)
     elif status_filter == 'inactive':
         resources = resources.filter(active=False)
 
-    # ── Categories from database (not hardcoded) ────────────────────
-    # We show ALL distinct categories currently in use,
-    # plus any active ResourceCategory records.
-    # This way even imported categories that aren't in
-    # ResourceCategory yet still appear in the filter.
-    db_categories = ResourceCategory.objects.filter(
-        active=True
-    ).values_list('name', flat=True)
+    # ── Sort ─────────────────────────────────────────────────────────
+    # No 'sort' param = default DB ordering (Resource.Meta.ordering,
+    # i.e. category then name). ?sort=name_asc / name_desc switches to
+    # a flat, letters-first alphabetical sort by resource_name —
+    # digit/symbol-led names (e.g. "10 mm Stapler") sort after letters,
+    # matching the same rule used for the Category dropdown.
+    sort = request.GET.get('sort', '')
 
-    # Also catch any categories from imports not yet in ResourceCategory
-    import_categories = Resource.objects.values_list(
-        'category', flat=True
-    ).distinct()
+    if sort in ('name_asc', 'name_desc'):
+        resources = list(resources)
 
-    # Merge and deduplicate, sorted alphabetically
-    all_categories = sorted(set(
-        list(db_categories) + [c for c in import_categories if c]
-    ))
+        def _sort_key(resource):
+            first_char = resource.resource_name.strip()[:1]
+            return (
+                (0, resource.resource_name.lower())
+                if first_char.isalpha()
+                else (1, resource.resource_name.lower())
+            )
+
+        resources.sort(key=_sort_key, reverse=(sort == 'name_desc'))
+
+    next_sort = 'name_desc' if sort == 'name_asc' else 'name_asc'
+
+    # ── Categories from database (not hardcoded) ─────────────────────
+    all_categories = ResourceCategory.get_available_names()
 
     paginator = Paginator(resources, 25)
     page_obj  = paginator.get_page(request.GET.get('page'))
-    
+
     context = {
         'page_title': 'Resources',
         'resources': page_obj,
@@ -71,7 +78,9 @@ def resource_list(request):
         'category_filter': category_filter,
         'status_filter': status_filter,
         'all_categories': all_categories,
-        'total_count': resources.count(),
+        'total_count': len(resources) if isinstance(resources, list) else resources.count(),
+        'sort': sort,
+        'next_sort': next_sort,
     }
     return render(request, 'resources/list.html', context)
 

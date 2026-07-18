@@ -1,5 +1,6 @@
 <!-- templates/resources/list.html -->
 {% extends "base.html" %}
+{% load custom_filters %}
 
 {% block content %}
 
@@ -74,6 +75,21 @@
                 </a>
             </div>
         </form>
+
+        <!-- Sort toggle — separate from the filter form since it's a
+             single click-through link, not something you "submit" -->
+        <div class="mt-2">
+            <a href="?{% query_string sort=next_sort %}"
+               class="btn btn-outline-secondary btn-sm px-3">
+                {% if sort == 'name_asc' %}
+                <i class="bi bi-sort-alpha-down-alt me-1"></i>Sorted A–Z
+                {% elif sort == 'name_desc' %}
+                <i class="bi bi-sort-alpha-up me-1"></i>Sorted Z–A
+                {% else %}
+                <i class="bi bi-sort-alpha-down me-1"></i>Sort A–Z
+                {% endif %}
+            </a>
+        </div>
     </div>
 </div>
 

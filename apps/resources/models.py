@@ -46,7 +46,15 @@ class ResourceCategory(models.Model):
             category=''
         ).values_list('category', flat=True).distinct()
 
-        return sorted(set(list(db_categories) + list(in_use_categories)))
+        all_names = set(list(db_categories) + list(in_use_categories))
+
+        def _sort_key(name):
+            # Letters-first alphabetical (case-insensitive); anything
+            # starting with a digit, symbol, or quote sorts after.
+            first_char = name.strip()[:1]
+            return (0, name.lower()) if first_char.isalpha() else (1, name.lower())
+
+        return sorted(all_names, key=_sort_key)
     
 class Resource(models.Model):
     """
@@ -77,8 +85,8 @@ class Resource(models.Model):
     )
 
     MATERIAL_TYPE_CHOICES = [
-        ('solid_wood', 'Solid Wood (CFT formula)'),
         ('sheet',      'Sheet Material (SFT formula)'),
+        ('solid_wood', 'Solid Wood (CFT formula)'),
         ('other',      'Other / Not Dimensional'),
     ]
     material_type = models.CharField(
