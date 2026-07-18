@@ -116,6 +116,48 @@
                         </div>
                     </div>
 
+                    <!-- Custom Formula -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold"
+                               style="font-size:0.875rem;">
+                            {{ form.formula_expression.label }}
+                        </label>
+                        {{ form.formula_expression }}
+                        {% if form.formula_expression.errors %}
+                        <div class="text-danger mt-1"
+                             style="font-size:0.8rem;">
+                            {{ form.formula_expression.errors.0 }}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">
+                            {{ form.formula_expression.help_text }}
+                        </div>
+                        <div class="p-3 mt-2"
+                             style="background:var(--surface-raised);
+                                    border-radius:8px;
+                                    border:1px solid var(--border);
+                                    font-size:0.78rem;">
+                            <strong>Available variables:</strong>
+                            <div class="mt-1" style="font-family:monospace; line-height:1.7;">
+                                width, breadth, height, length, pieces
+                                <span class="text-muted">(raw, as entered)</span><br>
+                                width_in, breadth_in, height_in, length_in
+                                <span class="text-muted">(converted to inches)</span><br>
+                                width_ft, breadth_ft, height_ft, length_ft
+                                <span class="text-muted">(converted to feet)</span><br>
+                                divisor
+                                <span class="text-muted">(system wood divisor)</span>
+                            </div>
+                            <div class="mt-2 text-muted">
+                                Functions: <code>max()</code>, <code>min()</code>,
+                                <code>abs()</code>, <code>round()</code>.
+                                There's no <code>divisor</code> variable — type the
+                                number you want directly. Example:
+                                <code>max(height_in, 1) * width_in * length_ft / 144</code>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Active -->
                     <div class="mb-4">
                         <div class="form-check">

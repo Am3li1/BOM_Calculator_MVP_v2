@@ -7,27 +7,19 @@ class SystemConfig(models.Model):
     """
     Stores global configuration for the application.
     Only ONE row should ever exist (singleton pattern).
-    
-    Why: The wood quantity formula uses a divisor (e.g. 144 or 1728).
-    Instead of hardcoding it, we store it here so any company
-    can change it without touching code.
+
+    Note: wood_divisor used to live here but was removed — the wood
+    quantity divisor is no longer a global setting. The two built-in
+    material_type formulas use a fixed constant (see
+    apps.bom.models._BUILTIN_DIVISOR), and custom formulas
+    (Resource/WoodPart.formula_expression) have the user type the
+    divisor literally, e.g. ".../166".
     """
 
     company_name = models.CharField(
         max_length=255,
         default='My Company',
         help_text="Your company name, shown in reports and headers."
-    )
-
-    wood_divisor = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=144.00,
-        help_text=(
-            "Divisor used in wood quantity formula: "
-            "(W × B × L × Pieces) ÷ Divisor. "
-            "Common values: 144 (inches) or 1728 (cubic inches to CFT)."
-        )
     )
 
     updated_at = models.DateTimeField(auto_now=True)
@@ -47,7 +39,7 @@ class SystemConfig(models.Model):
         
         Usage anywhere in the code:
             config = SystemConfig.get_config()
-            divisor = config.wood_divisor
+            company = config.company_name
         """
         obj, created = cls.objects.get_or_create(pk=1)
         return obj

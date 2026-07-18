@@ -96,6 +96,21 @@ class Resource(models.Model):
         )
     )
 
+    # ── Custom dimension formula ──────────────────────────────────
+    formula_expression = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "Optional. A custom formula overriding the default "
+            "Material Type formula for WoodPart quantity, e.g. "
+            "\"width_in * breadth_in * length_ft * pieces / divisor\". "
+            "Leave blank to use the built-in Solid Wood (CFT) / Sheet "
+            "(SFT) / Other formula based on Material Type. "
+            "Evaluated with a safe expression parser — no arbitrary "
+            "code execution."
+        ),
+    )
+
     active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -223,6 +238,3 @@ class Resource(models.Model):
             'supplier': None,
             'reason':   '',
         }
-    
-
-

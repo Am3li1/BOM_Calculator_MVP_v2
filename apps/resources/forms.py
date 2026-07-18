@@ -17,6 +17,7 @@ class ResourceForm(forms.ModelForm):
             'active',
             'manual_override_rate',
             'override_reason',
+            'formula_expression',
         ]
 
         widgets = {
@@ -51,6 +52,10 @@ class ResourceForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'e.g. Contract rate, Quality premium',
             }),
+            'formula_expression': forms.TextInput(attrs={
+                'class': 'form-control font-monospace',
+                'placeholder': 'e.g. width_in * breadth_in * length_ft * pieces / 144',
+            }),
         }
 
         labels = {
@@ -62,6 +67,7 @@ class ResourceForm(forms.ModelForm):
             'active':               'Active',
             'manual_override_rate': 'Override Rate',
             'override_reason':      'Override Reason',
+            'formula_expression':   'Custom Formula (optional)',
         }
 
         help_texts = {
@@ -76,6 +82,11 @@ class ResourceForm(forms.ModelForm):
             ),
             'active': (
                 'Inactive resources are hidden from BOM selection.'
+            ),
+            'formula_expression': (
+                'Overrides the built-in Material Type formula for this '
+                'resource specifically. Leave blank to use the default '
+                'Solid Wood / Sheet / Other formula.'
             ),
         }
 
@@ -104,3 +115,29 @@ class ResourceForm(forms.ModelForm):
         # Override rate is never required
         self.fields['manual_override_rate'].required = False
         self.fields['override_reason'].required = False
+        self.fields['formula_expression'].required = False
+
+    def clean_formula_expression(self):
+        """
+        Validates the formula at save time using dummy dimension
+        values — catches typos/syntax errors/unknown variables
+        immediately, rather than the first time someone views a cost
+        sheet using this resource.
+        """
+        expr = self.cleaned_data.get('formula_expression', '').strip()
+        if not expr:
+            return expr
+
+        from apps.core.safe_eval import evaluate_formula, FormulaError
+
+        dummy_variables = {
+            'width': 10, 'breadth': 10, 'height': 10, 'length': 10, 'pieces': 1,
+            'width_in': 10, 'breadth_in': 10, 'height_in': 10, 'length_in': 10,
+            'width_ft': 1, 'breadth_ft': 1, 'height_ft': 1, 'length_ft': 1,
+        }
+        try:
+            evaluate_formula(expr, dummy_variables)
+        except FormulaError as e:
+            raise forms.ValidationError(str(e))
+
+        return expr

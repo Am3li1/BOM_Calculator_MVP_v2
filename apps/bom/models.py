@@ -5,6 +5,14 @@ from django.db import models
 from apps.products.models import Product
 from apps.resources.models import Resource
 
+# Divisor used ONLY by the two built-in material_type formulas
+# (solid_wood CFT / 'other' legacy) below. This replaced
+# SystemConfig.wood_divisor — it is no longer a user-editable system
+# setting. Anyone who needs a different divisor writes it as a literal
+# in a custom formula (WoodPart.formula_expression or
+# Resource.formula_expression), e.g. ".../166".
+_BUILTIN_DIVISOR = Decimal('144')
+
 
 class Part(models.Model):
     """
@@ -171,6 +179,21 @@ class WoodPart(models.Model):
         default='standard',
     )
 
+    # ── Per-line custom formula ─────────────────────────────────────
+    formula_expression = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "Optional. A custom formula for THIS dimension entry only "
+            "— takes priority over the resource's formula and the "
+            "built-in Material Type formula. E.g. "
+            "\"width_in * breadth_in * length_ft * pieces / 166\". "
+            "Leave blank to fall back to the resource's custom formula "
+            "(if any), then the built-in formula. Evaluated with a "
+            "safe expression parser — no arbitrary code execution."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -181,63 +204,107 @@ class WoodPart(models.Model):
         return f'{self.product.product_code} — {self.part_name}'
 
     @property
-    def calculated_quantity(self):
-        from apps.core.models import SystemConfig
-        from decimal import Decimal
-    
-        config = SystemConfig.get_config()
-        divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
-    
-        w = Decimal(str(self.width))
-        b = Decimal(str(self.breadth))
-        h = Decimal(str(self.height)) if self.height else Decimal('1')
-        l = Decimal(str(self.length))
-        p = Decimal(str(self.pieces))
-    
-        if self.formula_type == 'area':
-            return (w * l * p) / divisor
-        else:
-            effective_h = h if h > 0 else Decimal('1')
-            return (w * b * effective_h * l * p) / divisor
-
-
-    @property
     def rate(self):
         """
         Live rate from the resource's effective rate.
         """
         return self.resource.effective_rate
-    
+
     @property
     def cost(self):
         """Calculated cost — never stored."""
         return self.calculated_quantity * self.rate
-    
+
+    def _formula_variables(self):
+        """
+        Builds the variable dict available to a custom
+        WoodPart.formula_expression or Resource.formula_expression.
+        Unit-conversion variables (_in / _ft) are omitted (not
+        KeyError'd) if the stored unit for that dimension isn't a
+        convertible length unit (e.g. 'sqft'/'cft'/'nos') —
+        referencing a missing one in a formula surfaces as a clear
+        "Unknown variable" FormulaError rather than crashing here.
+
+        Note: there is no 'divisor' variable. If a formula needs to
+        divide by something (144, 166, 1728...), the user types that
+        number directly in the expression — there's no implicit
+        system-wide value to fall back on.
+        """
+        def _try(dim_value, dim_unit, converter):
+            try:
+                return float(converter(dim_value, dim_unit))
+            except ValueError:
+                return None
+
+        variables = {
+            'width':   float(self.width or 0),
+            'breadth': float(self.breadth or 0),
+            'height':  float(self.height or 0),
+            'length':  float(self.length or 0),
+            'pieces':  float(self.pieces or 0),
+        }
+
+        for dim_name, dim_value, dim_unit in [
+            ('width', self.width, self.width_unit),
+            ('breadth', self.breadth, self.breadth_unit),
+            ('height', self.height, self.height_unit),
+            ('length', self.length, self.length_unit),
+        ]:
+            in_val = _try(dim_value, dim_unit, to_inches)
+            if in_val is not None:
+                variables[f'{dim_name}_in'] = in_val
+            ft_val = _try(dim_value, dim_unit, to_feet)
+            if ft_val is not None:
+                variables[f'{dim_name}_ft'] = ft_val
+
+        return variables
+
     @property
     def calculated_quantity(self):
         """
-        Quantity is derived from resource.material_type:
+        Quantity resolution order (most specific wins):
 
-          solid_wood -> CFT = (W_in × B_in × L_ft × pieces) / wood_divisor
-          sheet      -> SFT = W_ft × L_ft × pieces   (no divisor; B/H unused)
-          other      -> legacy formula_type-based calculation (unchanged
-                        behaviour for anything not yet classified)
+          1. self.formula_expression, if set — a custom formula for
+             THIS WoodPart line only.
+          2. resource.formula_expression, if set — a custom formula
+             shared by every WoodPart using this resource.
+          3. Built-in formula by resource.material_type:
+               solid_wood -> CFT = (W_in × B_in × L_ft × pieces) / 144
+               sheet      -> SFT = W_ft × B_ft × pieces   (Length unused)
+               other      -> legacy formula_type-based calculation
+                             (unchanged behaviour for anything not yet
+                             classified and without a custom formula)
+
+        Both custom-formula tiers are evaluated the same way — safely,
+        via apps/core/safe_eval.py — and share the same variable set
+        (see _formula_variables). Neither has access to a 'divisor'
+        variable; any division constant goes directly in the formula
+        text.
         """
-        from apps.core.models import SystemConfig
+        woodpart_formula = (self.formula_expression or '').strip()
+        resource_formula = (self.resource.formula_expression or '').strip()
+        custom_formula = woodpart_formula or resource_formula
+
+        if custom_formula:
+            from apps.core.safe_eval import evaluate_formula, FormulaError
+
+            variables = self._formula_variables()
+            source = 'this dimension entry' if woodpart_formula else \
+                f'resource "{self.resource.resource_name}"'
+            try:
+                result = evaluate_formula(custom_formula, variables)
+            except FormulaError as e:
+                raise FormulaError(f'Formula error ({source}): {e}')
+            return Decimal(str(result))
 
         material_type = self.resource.material_type
-
         pieces = Decimal(str(self.pieces))
 
         if material_type == 'solid_wood':
             w_in = to_inches(self.width, self.width_unit)
             b_in = to_inches(self.breadth, self.breadth_unit)
             l_ft = to_feet(self.length, self.length_unit)
-
-            config = SystemConfig.get_config()
-            divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
-
-            return (w_in * b_in * l_ft * pieces) / divisor
+            return (w_in * b_in * l_ft * pieces) / _BUILTIN_DIVISOR
 
         if material_type == 'sheet':
             w_ft = to_feet(self.width, self.width_unit)
@@ -246,16 +313,27 @@ class WoodPart(models.Model):
 
         # material_type == 'other' -> legacy behaviour, unit-naive
         # (kept as-is so unclassified resources don't silently change cost)
-        config = SystemConfig.get_config()
-        divisor = Decimal(str(config.wood_divisor)) if config.wood_divisor else Decimal('1')
-
         w = Decimal(str(self.width))
         b = Decimal(str(self.breadth))
         h = Decimal(str(self.height)) if self.height else Decimal('1')
         l = Decimal(str(self.length))
 
         if self.formula_type == 'area':
-            return (w * l * pieces) / divisor
+            return (w * l * pieces) / _BUILTIN_DIVISOR
         else:
             effective_h = h if h > 0 else Decimal('1')
-            return (w * b * effective_h * l * pieces) / divisor
+            return (w * b * effective_h * l * pieces) / _BUILTIN_DIVISOR
+
+    @property
+    def formula_source(self):
+        """
+        Which tier actually produced calculated_quantity — for UI
+        badges ("this entry" / "resource default" / "built-in") and
+        debugging. Mirrors the precedence in calculated_quantity;
+        keep the two in sync if that logic ever changes.
+        """
+        if (self.formula_expression or '').strip():
+            return 'woodpart_custom'
+        if (self.resource.formula_expression or '').strip():
+            return 'resource_custom'
+        return 'material_type_default'

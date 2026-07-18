@@ -130,12 +130,10 @@ def woodpart_add(request, product_pk):
     All active resources are available (not just Wood/Ply/MDF).
     """
     from apps.resources.models import Resource
-    from apps.core.models import SystemConfig
     from .models import Part
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
-    config = SystemConfig.get_config()
     existing_parts = Part.objects.filter(product=product)
 
     # Unit choices passed to template so we don't hardcode them there
@@ -152,6 +150,7 @@ def woodpart_add(request, product_pk):
 
     if request.method == 'POST':
         from .models import WoodPart
+        from apps.core.safe_eval import FormulaError
 
         resource_id  = request.POST.get('resource')
         part_id      = request.POST.get('part')
@@ -166,6 +165,15 @@ def woodpart_add(request, product_pk):
         height_unit  = request.POST.get('height_unit', 'in')
         length_unit  = request.POST.get('length_unit', 'in')
 
+        # Only honour the typed formula if the checkbox is actually
+        # checked — avoids accidentally saving stale text left in a
+        # hidden field.
+        use_custom_formula = request.POST.get('use_custom_formula') == 'on'
+        formula_expression = (
+            request.POST.get('formula_expression', '').strip()
+            if use_custom_formula else ''
+        )
+
         if not all([resource_id, part_id, width, breadth, length, pieces]) or \
            (part_id == '__new__' and not new_part_name):
             messages.error(request, 'All fields except Height are required.')
@@ -179,7 +187,7 @@ def woodpart_add(request, product_pk):
                 else:
                     part_obj = Part.objects.get(pk=part_id, product=product)
 
-                WoodPart.objects.create(
+                new_wood_part = WoodPart(
                     product      = product,
                     resource     = resource,
                     part         = part_obj,
@@ -193,7 +201,17 @@ def woodpart_add(request, product_pk):
                     breadth_unit = breadth_unit,
                     height_unit  = height_unit,
                     length_unit  = length_unit,
+                    formula_expression = formula_expression,
                 )
+
+                if formula_expression:
+                    # Validate against the ACTUAL entered dimensions —
+                    # not dummy values — before saving. Uses the exact
+                    # same code path the BOM/cost sheet will use later,
+                    # so "valid here" really does mean "valid there".
+                    new_wood_part.calculated_quantity
+
+                new_wood_part.save()
                 messages.success(
                     request,
                     f'Dimension entry "{part_obj.name}" added successfully.'
@@ -207,13 +225,14 @@ def woodpart_add(request, product_pk):
                     request,
                     'Please enter valid numbers for all dimensions.'
                 )
+            except FormulaError as e:
+                messages.error(request, f'Formula error: {e}')
 
     context = {
         'page_title': f'Add Dimension — {product.product_code}',
         'product': product,
         'all_resources': all_resources,
         'unit_choices': unit_choices,
-        'divisor': config.wood_divisor,
         'existing_parts': existing_parts,
         # resource.pk (as string, since JSON object keys are always
         # strings) -> material_type. Used by JS to auto-default the
@@ -247,12 +266,11 @@ def woodpart_edit(request, pk):
     from .models import WoodPart
     from .models import Part 
     from apps.resources.models import Resource
-    from apps.core.models import SystemConfig
+    from apps.core.safe_eval import FormulaError
 
     wood_part = get_object_or_404(WoodPart, pk=pk)
     product = wood_part.product
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
-    config = SystemConfig.get_config()
     existing_parts = Part.objects.filter(product=product)
 
     unit_choices = [
@@ -279,6 +297,12 @@ def woodpart_edit(request, pk):
         height_unit  = request.POST.get('height_unit', 'in')
         length_unit  = request.POST.get('length_unit', 'in')
 
+        use_custom_formula = request.POST.get('use_custom_formula') == 'on'
+        formula_expression = (
+            request.POST.get('formula_expression', '').strip()
+            if use_custom_formula else ''
+        )
+
         if not all([resource_id, part_name, width, breadth, length, pieces]):
             messages.error(request, 'All fields except Height are required.')
         else:
@@ -298,6 +322,14 @@ def woodpart_edit(request, pk):
                 wood_part.breadth_unit = breadth_unit
                 wood_part.height_unit  = height_unit
                 wood_part.length_unit  = length_unit
+                wood_part.formula_expression = formula_expression
+
+                if formula_expression:
+                    # Validate against the ACTUAL entered dimensions —
+                    # same code path used everywhere else — before
+                    # this change is persisted.
+                    wood_part.calculated_quantity
+
                 wood_part.save()
 
                 messages.success(
@@ -313,6 +345,8 @@ def woodpart_edit(request, pk):
                     request,
                     'Please enter valid numbers for all dimensions.'
                 )
+            except FormulaError as e:
+                messages.error(request, f'Formula error: {e}')
 
     context = {
         'page_title': f'Edit Dimension — {product.product_code}',
@@ -320,7 +354,6 @@ def woodpart_edit(request, pk):
         'wood_part': wood_part,
         'all_resources': all_resources,
         'unit_choices': unit_choices,
-        'divisor': config.wood_divisor,
         'existing_parts': existing_parts,
         'resource_material_types': {
             str(r.pk): r.material_type for r in all_resources
