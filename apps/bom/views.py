@@ -55,26 +55,13 @@ def bom_add(request, product_pk):
         product=product
     ).values_list('resource_id', flat=True)
 
+    # Category-wise, alphabetical-within-category — same ordering
+    # used by woodpart_add/woodpart_edit for their resource combobox.
     available_resources = list(
         Resource.objects.filter(
             active=True
-        ).exclude(id__in=existing_resource_ids)
+        ).exclude(id__in=existing_resource_ids).order_by('category', 'resource_name')
     )
-
-    def _resource_sort_key(resource):
-        # Letters-first alphabetical by name (case-insensitive);
-        # names starting with a digit/symbol sort after — matches
-        # the same rule used for the Category dropdown. Flat by
-        # name, NOT grouped by category (that was the actual bug —
-        # Resource's default Meta.ordering is category-first).
-        first_char = resource.resource_name.strip()[:1]
-        return (
-            (0, resource.resource_name.lower())
-            if first_char.isalpha()
-            else (1, resource.resource_name.lower())
-        )
-
-    available_resources.sort(key=_resource_sort_key)
 
     if request.method == 'POST':
         resource_id = request.POST.get('resource')
@@ -106,6 +93,21 @@ def bom_add(request, product_pk):
         'page_title': f'Add BOM Item — {product.product_code}',
         'product': product,
         'available_resources': available_resources,
+        # Flat list for the type-to-filter combobox JS — same shape as
+        # woodpart_add's resource_options, plus rate (this page has no
+        # material-type unit-defaulting logic, so that map isn't needed
+        # here, but showing the rate replaces what the old native
+        # <select> used to display inline).
+        'resource_options': [
+            {
+                'id': r.pk,
+                'name': r.resource_name,
+                'category': r.category,
+                'unit': r.unit,
+                'rate': str(r.effective_rate),
+            }
+            for r in available_resources
+        ],
     }
     return render(request, 'bom/bom_add.html', context)
 
