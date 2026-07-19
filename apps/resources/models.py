@@ -3,6 +3,55 @@
 from django.db import models
 from decimal import Decimal
 
+# ── Canonical unit code -> full label ──────────────────────────────
+# Single source of truth for "what does this unit code mean". The
+# short CODE (left side) is what's actually stored on Resource.unit
+# and on WoodPart's width/breadth/height/length_unit fields, and is
+# what's shown everywhere in the Standard BOM and Dimensional BOM
+# (list/detail/add-item screens) — short form there is intentional,
+# it's what fits in a cost table.
+#
+# The full LABEL (right side) is only used where we want a reader
+# who isn't necessarily familiar with the abbreviations to pick the
+# right one without guessing — currently just the Add/Edit Resource
+# Unit dropdown. Both apps.resources.forms.ResourceForm and
+# apps.bom.views's woodpart_add/woodpart_edit pull their choices from
+# this one list so they can't drift out of sync with each other.
+#
+# NOTE: this only covers units going forward — it does not migrate or
+# validate any unit values already sitting in the database (e.g. an
+# old resource could still have a legacy free-text value like '1set'
+# or 'feet' saved on it). Editing such a resource just won't show a
+# pre-selected match in this fixed dropdown; the stored value itself
+# is left untouched.
+UNIT_CHOICES = [
+    ('cft',    'Cubic Feet'),
+    ('cm',     'Centimeters'),
+    ('days',   'Days'),
+    ('ft',     'Feet'),
+    ('in',     'Inches'),
+    ('kg',     'Kilograms'),
+    ('litres', 'Litres'),
+    ('m',      'Meters'),
+    ('mm',     'Millimeters'),
+    ('nos',    'Numbers'),
+    ('pkt',    'Packet'),
+    ('roll',   'Roll'),
+    ('set',    'Set'),
+    ('sqft',   'Square Feet'),
+]
+
+# Subset of UNIT_CHOICES that make sense for a physical dimension
+# (WoodPart width/breadth/height/length) — excludes non-dimensional
+# units like kg/days/litres/pkt/roll/set that only apply to Resource
+# itself, not to a measured piece of material.
+DIMENSIONAL_UNIT_CODES = ['cm', 'cft', 'ft', 'in', 'm', 'mm', 'nos', 'sqft']
+
+DIMENSIONAL_UNIT_CHOICES = [
+    (code, label) for code, label in UNIT_CHOICES
+    if code in DIMENSIONAL_UNIT_CODES
+]
+
 class ResourceCategory(models.Model):
     """
     Stores resource categories as database records.

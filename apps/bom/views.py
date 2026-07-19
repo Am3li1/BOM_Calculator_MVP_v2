@@ -153,7 +153,7 @@ def woodpart_add(request, product_pk):
     Adds a Dimension entry to a product.
     All active resources are available (not just Wood/Ply/MDF).
     """
-    from apps.resources.models import Resource
+    from apps.resources.models import Resource, DIMENSIONAL_UNIT_CHOICES
     from .models import Part
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
@@ -161,16 +161,7 @@ def woodpart_add(request, product_pk):
     existing_parts = Part.objects.filter(product=product)
 
     # Unit choices passed to template so we don't hardcode them there
-    unit_choices = [
-        ('cm',   'Centimeters'),
-        ('cft',  'Cubic Feet'),
-        ('ft',   'Feet'),
-        ('in',   'Inches'),
-        ('m',    'Meters'),
-        ('mm',   'Millimeters'),
-        ('nos',  'Numbers'),
-        ('sqft', 'Square Feet'),
-    ]
+    unit_choices = DIMENSIONAL_UNIT_CHOICES
     
     if request.method == 'POST':
         from .models import WoodPart
@@ -289,7 +280,7 @@ def woodpart_edit(request, pk):
     """
     from .models import WoodPart
     from .models import Part 
-    from apps.resources.models import Resource
+    from apps.resources.models import Resource, DIMENSIONAL_UNIT_CHOICES
     from apps.core.safe_eval import FormulaError
 
     wood_part = get_object_or_404(WoodPart, pk=pk)
@@ -297,16 +288,7 @@ def woodpart_edit(request, pk):
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
     existing_parts = Part.objects.filter(product=product)
 
-    unit_choices = [
-        ('in',   'Inches'),
-        ('ft',   'Feet'),
-        ('sqft', 'Square Feet'),
-        ('cft',  'Cubic Feet'),
-        ('mm',   'Millimeters'),
-        ('cm',   'Centimeters'),
-        ('m',    'Meters'),
-        ('nos',  'Numbers'),
-    ]
+    unit_choices = DIMENSIONAL_UNIT_CHOICES
 
     if request.method == 'POST':
         resource_id  = request.POST.get('resource')

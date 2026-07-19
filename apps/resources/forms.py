@@ -1,6 +1,6 @@
 # apps/resources/forms.py
 from django import forms
-from .models import Resource
+from .models import Resource, UNIT_CHOICES
 
 
 class ResourceForm(forms.ModelForm):
@@ -87,34 +87,28 @@ class ResourceForm(forms.ModelForm):
         self.fields['category'].required = True
 
         # ── Unit dropdown ────────────────────────────────────────────
-        # Data-driven, same idea as Category: every distinct unit
-        # already in use across Resources, alphabetical with
-        # digit/symbol-led units sorted last, plus a "+ Add new
-        # unit…" escape hatch (handled in clean_unit below) so a
-        # genuinely new unit doesn't require a Django Admin trip.
-        # .order_by('unit') here is required, not cosmetic: Resource's
-        # default Meta.ordering (['category', 'resource_name']) leaks
-        # into the SQL ORDER BY even for this values_list() query,
-        # which breaks .distinct() on SQLite — you get one row per
-        # distinct (unit, category, resource_name) combo instead of
-        # one row per distinct unit. Overriding the ordering here
-        # fixes it.
-        existing_units = list(
-            Resource.objects.exclude(unit='')
-            .values_list('unit', flat=True)
-            .order_by('unit')
-            .distinct()
-        )
-
-        def _unit_sort_key(name):
-            first_char = name.strip()[:1]
-            return (0, name.lower()) if first_char.isalpha() else (1, name.lower())
-
-        existing_units.sort(key=_unit_sort_key)
-
-        unit_choices = [('', '— Select Unit —')] + [
-            (u, u) for u in existing_units
-        ] + [('__new__', '+ Add new unit…')]
+        # Full-word labels from the canonical UNIT_CHOICES list in
+        # models.py (shared with the BOM Dimensions unit dropdowns —
+        # single source of truth, see the comment there). This is no
+        # longer data-driven off Resource.unit: a fixed list reads
+        # more clearly than raw codes like "cft"/"sqft", and it means
+        # a resource with a legacy/one-off unit value already in the
+        # database (typos, old free-text entries, etc.) doesn't leak
+        # into everyone else's dropdown. The stored value on any such
+        # resource is left exactly as-is; editing that one resource
+        # just won't show a pre-selected match here — a "+ Add new
+        # unit…" escape hatch (handled in clean_unit below) covers a
+        # genuinely new unit without a Django Admin trip.
+        #
+        # (The old version queried distinct Resource.unit values with
+        # an explicit .order_by('unit') before .distinct() — that
+        # order_by was working around Resource's default Meta.ordering
+        # leaking into the SQL and breaking .distinct() on SQLite.
+        # That workaround is no longer needed now that this dropdown
+        # doesn't query Resource at all.)
+        unit_choices = [('', '— Select Unit —')] + list(UNIT_CHOICES) + [
+            ('__new__', '+ Add new unit…')
+        ]
 
         self.fields['unit'].widget = forms.Select(
             choices=unit_choices,
