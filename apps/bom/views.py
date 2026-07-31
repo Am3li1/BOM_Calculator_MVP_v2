@@ -158,7 +158,7 @@ def woodpart_add(request, product_pk):
 
     product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
-    existing_parts = Part.objects.filter(product=product)
+    existing_parts = Part.objects.all()
 
     # Unit choices passed to template so we don't hardcode them there
     unit_choices = DIMENSIONAL_UNIT_CHOICES
@@ -196,11 +196,9 @@ def woodpart_add(request, product_pk):
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)
                 if part_id == '__new__':
-                    part_obj, _ = Part.objects.get_or_create(
-                        product=product, name=new_part_name
-                    )
+                    part_obj, _ = Part.objects.get_or_create(name=new_part_name)
                 else:
-                    part_obj = Part.objects.get(pk=part_id, product=product)
+                    part_obj = Part.objects.get(pk=part_id)
 
                 new_wood_part = WoodPart(
                     product      = product,
@@ -286,7 +284,7 @@ def woodpart_edit(request, pk):
     wood_part = get_object_or_404(WoodPart, pk=pk)
     product = wood_part.product
     all_resources = Resource.objects.filter(active=True).order_by('category', 'resource_name')
-    existing_parts = Part.objects.filter(product=product)
+    existing_parts = Part.objects.all()
 
     unit_choices = DIMENSIONAL_UNIT_CHOICES
 
@@ -314,7 +312,7 @@ def woodpart_edit(request, pk):
         else:
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)
-                part_obj, _ = Part.objects.get_or_create(product=product, name=part_name)
+                part_obj, _ = Part.objects.get_or_create(name=part_name)
 
                 wood_part.resource     = resource
                 wood_part.part         = part_obj

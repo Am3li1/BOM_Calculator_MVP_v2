@@ -13,5 +13,5 @@ class WoodPartAdmin(admin.ModelAdmin):
 
 @admin.register(Part)
 class PartAdmin(admin.ModelAdmin):
-    list_display = ['product', 'name']
+    list_display = ['name']
     search_fields = ['product__product_name', 'name']

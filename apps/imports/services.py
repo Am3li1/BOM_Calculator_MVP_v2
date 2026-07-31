@@ -693,11 +693,9 @@ def import_parts(path):
             product_code=code, is_deleted=False
         ).first()
         if not product:
-            continue
+            continue   # kept as a sanity check that the sheet's product exists
 
-        _, created = Part.objects.get_or_create(
-            product=product, name=part_name
-        )
+        _, created = Part.objects.get_or_create(name=part_name)   # drop product=
         if created:
             result['imported'] += 1
         else:

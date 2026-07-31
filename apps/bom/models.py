@@ -21,19 +21,13 @@ class Part(models.Model):
     standalone CRUD page. Managed via the Parts sheet import
     and inline from the WoodPart add/edit forms.
     """
-    product = models.ForeignKey(
-        'products.Product',
-        on_delete=models.CASCADE,
-        related_name='parts',
-    )
-    name = models.CharField(max_length=200)
+    name = models.CharField(max_length=200, unique=True)
 
     class Meta:
         ordering = ['name']
-        unique_together = [['product', 'name']]
 
     def __str__(self):
-        return f'{self.product.product_code} — {self.name}'
+        return self.name
 
 class BOMItem(models.Model):
     """
