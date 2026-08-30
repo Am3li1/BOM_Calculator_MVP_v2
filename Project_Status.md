@@ -263,18 +263,13 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 ## Deployment Notes
 
 ### Production (live)
-- **Platform:** Physical Debian 12 server, client's Coimbatore office (`prod-node-01`), managed via Coolify v4.1.2
-- **Stack:** Tailscale Serve (HTTPS) → Traefik (Coolify) → Gunicorn → Django → PostgreSQL 16-alpine (Docker, Coolify-managed)
-- **SSL:** Tailscale Serve auto-issued cert (tailnet-only trust, no public CA needed)
+- **Platform:** Contabo VPS with Coolify on it, public HTTPS via `bom.lumelabs.dev`, Dockerfile-based build
+- **Stack:** Contabo VPS → Gunicorn → Django → PostgreSQL 16-alpine (Docker, Coolify-managed)
 - **Database:** PostgreSQL, persistent Docker volume, no data loss on redeploy
-- **URLs:** `https://prod-node-01.tail7e0384.ts.net` (primary), `http://otiwlmrwnyx3j1r42w7qe23r.100.75.145.23.sslip.io` (fallback)
-- **Access control:** Tailscale tailnet membership — devices without Tailscale cannot reach the server at all, regardless of physical network
+- **URLs:** `https://bom.lumelabs.dev` (primary)
 
 ### Render (retired)
 - Previously used for early MVP hosting on SQLite (free tier, data reset every deploy). Fully replaced by the Coolify deployment above.
-
-### Hostinger VPS (superseded, never provisioned)
-- Was the planned target before the client's on-prem Debian server + Coolify became the actual deployment path. No infrastructure was purchased under this plan.
 
 ### Current environment
 - **Default credentials:** superuser created manually post-deploy — change immediately
