@@ -1,2 +1,2 @@
-toml [phases.setup]
+[phases.setup]
 nixPkgs = ["...", "stdenv.cc.cc.lib", "zlib"]
