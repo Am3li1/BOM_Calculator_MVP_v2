@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center page-header-row mb-3">
+    <h5 class="mb-0">Quotations</h5>
+    {% if user.is_staff %}
+    <a href="{% url 'quotations:quotation_create' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> New Quotation
+    </a>
+    {% endif %}
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+        <form method="get" class="d-flex flex-wrap gap-2 flex-grow-1">
+            <input type="text" name="search" value="{{ search }}"
+                   class="form-control form-control-sm" style="max-width:240px;"
+                   placeholder="Search by number or customer...">
+            <select name="status" class="form-select form-select-sm" style="max-width:160px;">
+                <option value="">All statuses</option>
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Quotation #</th>
+                    <th>Customer</th>
+                    <th>Status</th>
+                    <th class="text-end">Grand Total (₹)</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for q in page_obj %}
+                <tr>
+                    <td class="font-mono">{{ q.quotation_number }}</td>
+                    <td>{{ q.customer.name }}</td>
+                    <td>
+                        <span class="badge
+                            {% if q.status == 'accepted' %}bg-success-subtle text-success
+                            {% elif q.status == 'rejected' %}bg-danger-subtle text-danger
+                            {% elif q.status == 'sent' %}bg-info-subtle text-info
+                            {% else %}bg-secondary-subtle text-secondary{% endif %}">
+                            {{ q.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="text-end font-mono">{{ q.grand_total|floatformat:2 }}</td>
+                    <td>{{ q.created_at|date:"d M Y" }}</td>
+                    <td class="text-end">
+                        <a href="{% url 'quotations:quotation_detail' q.pk %}"
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if q.status == 'draft' and user.is_staff %}
+                        <a href="{% url 'quotations:quotation_edit' q.pk %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form method="post" action="{% url 'quotations:quotation_delete' q.pk %}" class="d-inline"
+                              onsubmit="return confirm('Delete this draft quotation? This cannot be undone.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No quotations yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    {% include 'partials/pagination.html' %}
+    {% endif %}
+</div>
+
+{% endblock %}

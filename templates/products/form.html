@@ -34,6 +34,36 @@
                         {% endif %}
                     </div>
 
+                    <!-- HSN Code -->
+                    <div class="mb-3">
+                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                            {{ form.hsn_code.label }}
+                        </label>
+                        {{ form.hsn_code }}
+                        {% if form.hsn_code.errors %}
+                            <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                {{ form.hsn_code.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- GST Rate -->
+                    <div class="mb-3">
+                        <label class="form-label fw-500" style="font-size:0.875rem;">
+                            {{ form.gst_rate.label }}
+                            <span class="text-danger">*</span>
+                        </label>
+                        {{ form.gst_rate }}
+                        {% if form.gst_rate.help_text %}
+                            <div class="form-text">{{ form.gst_rate.help_text }}</div>
+                        {% endif %}
+                        {% if form.gst_rate.errors %}
+                            <div class="text-danger mt-1" style="font-size:0.8rem;">
+                                {{ form.gst_rate.errors.0 }}
+                            </div>
+                        {% endif %}
+                    </div>
+
                     <!-- Active -->
                     <div class="mb-4">
                         <div class="form-check">

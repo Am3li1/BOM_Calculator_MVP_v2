@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center page-header-row mb-3">
+    <div>
+        <h5 class="mb-0">{{ quotation.quotation_number }}</h5>
+        <small class="text-muted">{{ quotation.customer.name }} — {{ quotation.created_at|date:"d M Y" }}</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'quotations:quotation_pdf' quotation.pk %}" target="_blank"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-file-earmark-pdf me-1"></i> View PDF
+        </a>
+        {% if quotation.status == 'draft' and user.is_staff %}
+        <a href="{% url 'quotations:quotation_edit' quotation.pk %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i> Edit
+        </a>
+        <form method="post" action="{% url 'quotations:quotation_delete' quotation.pk %}" class="d-inline"
+              onsubmit="return confirm('Delete this draft? This cannot be undone.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i> Delete</button>
+        </form>
+        {% endif %}
+        {% if user.is_staff %}
+        <form method="post" action="{% url 'quotations:quotation_update_status' quotation.pk %}" class="d-flex gap-2">
+            {% csrf_token %}
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for value, label in quotation.STATUS_CHOICES %}
+                <option value="{{ value }}" {% if quotation.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="p-3 small d-flex justify-content-between">
+        <div>
+            <div class="fw-bold fs-5">{{ company.company_name }}</div>
+            <div>State: {{ company.company_state }}</div>
+        </div>
+        {% if company.company_gstin %}
+        <div class="text-end font-mono">GSTIN: {{ company.company_gstin }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Customer</div>
+    <div class="p-3 small">
+        <div>{{ quotation.customer.name }}</div>
+        {% if quotation.customer.address %}<div>{{ quotation.customer.address }}</div>{% endif %}
+        <div>State: {{ quotation.customer.state }}</div>
+        <div class="font-mono">GSTIN: {{ quotation.customer.gst_number }}</div>
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Line Items</div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>HSN</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Unit Price</th>
+                    <th class="text-end">Net Amount</th>
+                    <th>Tax Type</th>
+                    <th class="text-end">Tax Amount</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in quotation.items.all %}
+                <tr>
+                    <td>{{ item.product.product_name }}</td>
+                    <td class="font-mono">{{ item.hsn_code|default:"—" }}</td>
+                    <td class="text-end">{{ item.quantity }}</td>
+                    <td class="text-end font-mono">{{ item.marked_up_price|floatformat:2 }}</td>
+                    <td class="text-end font-mono">{{ item.line_subtotal|floatformat:2 }}</td>
+                    <td>
+                        {% if item.tax_type == 'CGST_SGST' %}CGST {{ item.gst_rate|floatformat:1 }}% + SGST{% else %}IGST {{ item.gst_rate }}%{% endif %}
+                    </td>
+                    <td class="text-end font-mono">
+                        {% if item.tax_type == 'CGST_SGST' %}
+                            {{ item.cgst_amount|add:item.sgst_amount|floatformat:2 }}
+                        {% else %}
+                            {{ item.igst_amount|floatformat:2 }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end font-mono">{{ item.line_total|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="content-card mb-3" style="max-width:400px;margin-left:auto;">
+    <div class="card-header">Tax Summary</div>
+    <div class="table-responsive">
+        <table class="table mb-0 small">
+            <thead>
+                <tr>
+                    <th>Rate</th>
+                    <th class="text-end">Taxable</th>
+                    <th class="text-end">CGST</th>
+                    <th class="text-end">SGST</th>
+                    <th class="text-end">IGST</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bucket in tax_summary %}
+                <tr>
+                    <td>{{ bucket.rate }}%</td>
+                    <td class="text-end font-mono">{{ bucket.taxable|floatformat:2 }}</td>
+                    <td class="text-end font-mono">{{ bucket.cgst|floatformat:2 }}</td>
+                    <td class="text-end font-mono">{{ bucket.sgst|floatformat:2 }}</td>
+                    <td class="text-end font-mono">{{ bucket.igst|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="p-3 border-top">
+        <div class="d-flex justify-content-between fw-bold">
+            <span>Grand Total</span>
+            <span class="font-mono">₹{{ quotation.grand_total|floatformat:2 }}</span>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

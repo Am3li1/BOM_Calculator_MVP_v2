@@ -1,0 +1,263 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="mb-3">
+    <h5 class="mb-0">New Quotation</h5>
+</div>
+
+<form method="post" id="quotation-form" action="{% if quotation %}{% url 'quotations:quotation_edit' quotation.pk %}{% else %}{% url 'quotations:quotation_create' %}{% endif %}">
+    {% csrf_token %}
+
+    <!-- ── Customer ─────────────────────────────────────────────── -->
+    <div class="content-card mb-3">
+        <div class="card-header">Customer</div>
+        <div class="p-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label small text-muted">Customer</label>
+                    <select name="customer" id="customer-select" class="form-select" required>
+                        <option value="">Select a customer...</option>
+                        {% for c in customers %}
+                        <option value="{{ c.pk }}" data-state="{{ c.state }}" {% if quotation and quotation.customer_id == c.pk %}selected{% endif %}>
+                            {{ c.name }} ({{ c.state }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <a href="{% url 'quotations:customer_create' %}?next={% url 'quotations:quotation_create' %}"
+                       class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-plus-lg me-1"></i> New Customer
+                    </a>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <span class="small text-muted">Company state: <strong>{{ company_state }}</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Line items ───────────────────────────────────────────── -->
+    <div class="content-card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Products</span>
+            <button type="button" id="add-line-btn" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-lg me-1"></i> Add line
+            </button>
+        </div>
+
+        {{ formset.management_form }}
+
+        {% if formset.non_form_errors %}
+        <div class="alert alert-danger mx-3 mt-3">{{ formset.non_form_errors }}</div>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="table mb-0" id="items-table">
+                <thead>
+                    <tr>
+                        <th style="min-width:220px;">Product</th>
+                        <th style="width:90px;">Qty</th>
+                        <th style="width:110px;">Markup %</th>
+                        <th class="text-end" style="width:110px;">Base Cost</th>
+                        <th class="text-end" style="width:120px;">Marked-up Price</th>
+                        <th class="text-end" style="width:100px;">Tax</th>
+                        <th class="text-end" style="width:120px;">Line Total</th>
+                        <th style="width:40px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="items-body">
+                    {% for form in formset %}
+                    <tr class="item-row">
+                        <td>
+                            {{ form.product }}
+                            {{ form.id }}
+                            {% if form.product.errors %}<div class="text-danger small">{{ form.product.errors|striptags }}</div>{% endif %}
+                        </td>
+                        <td>
+                            {{ form.quantity }}
+                            {% if form.quantity.errors %}<div class="text-danger small">{{ form.quantity.errors|striptags }}</div>{% endif %}
+                        </td>
+                        <td>
+                            {{ form.markup_tier }}
+                        </td>
+                        <td class="text-end base-cost-cell font-mono">—</td>
+                        <td class="text-end marked-up-cell font-mono">—</td>
+                        <td class="text-end tax-cell font-mono">—</td>
+                        <td class="text-end line-total-cell font-mono">—</td>
+                        <td class="text-center">
+                            {% if form.DELETE %}
+                            <div class="form-check">{{ form.DELETE }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Totals preview ───────────────────────────────────────── -->
+    <div class="content-card mb-3" style="max-width:360px;margin-left:auto;">
+        <div class="p-3">
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Taxable Total</span>
+                <span class="font-mono" id="preview-taxable">₹0.00</span>
+            </div>
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Tax Total</span>
+                <span class="font-mono" id="preview-tax">₹0.00</span>
+            </div>
+            <hr class="my-2">
+            <div class="d-flex justify-content-between fw-bold">
+                <span>Grand Total</span>
+                <span class="font-mono" id="preview-grand">₹0.00</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Quotation</button>
+        <a href="{% url 'quotations:quotation_list' %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+<!-- Hidden template row for cloning new lines -->
+<template id="empty-row-template">
+    <tr class="item-row">
+        <td>{{ formset.empty_form.product }}</td>
+        <td>{{ formset.empty_form.quantity }}</td>
+        <td>{{ formset.empty_form.markup_tier }}</td>
+        <td class="text-end base-cost-cell font-mono">—</td>
+        <td class="text-end marked-up-cell font-mono">—</td>
+        <td class="text-end tax-cell font-mono">—</td>
+        <td class="text-end line-total-cell font-mono">—</td>
+        <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-danger remove-row-btn">
+                <i class="bi bi-x"></i>
+            </button>
+        </td>
+    </tr>
+</template>
+
+{% endblock %}
+
+{% block extra_js %}
+{{ markup_tiers|json_script:"markup-tiers-data" }}
+<script>
+    const markupTiers = JSON.parse(document.getElementById('markup-tiers-data').textContent);
+    const MARKUP_TIERS = Object.fromEntries(
+        markupTiers.map(tier => [tier.pk, parseFloat(tier.percentage)])
+    );
+</script>
+{{ block.super }}
+<script>
+(function () {
+    const COMPANY_STATE = "{{ request.company_state|default:'' }}"; // fallback below if empty
+    const itemsBody = document.getElementById('items-body');
+    const addLineBtn = document.getElementById('add-line-btn');
+    const totalFormsInput = document.querySelector('input[name="items-TOTAL_FORMS"]');
+    const template = document.getElementById('empty-row-template');
+    const customerSelect = document.getElementById('customer-select');
+
+    function getCustomerState() {
+        const opt = customerSelect.options[customerSelect.selectedIndex];
+        return opt ? (opt.dataset.state || '') : '';
+    }
+
+    // ── Add a new blank line by cloning the template row ────────────
+    addLineBtn.addEventListener('click', function () {
+        const formIndex = parseInt(totalFormsInput.value, 10);
+        const html = template.innerHTML.replace(/__prefix__/g, formIndex);
+        const wrapper = document.createElement('tbody');
+        wrapper.innerHTML = html;
+        const newRow = wrapper.querySelector('tr');
+        itemsBody.appendChild(newRow);
+        totalFormsInput.value = formIndex + 1;
+        bindRow(newRow);
+    });
+
+    itemsBody.addEventListener('click', function (e) {
+        if (e.target.closest('.remove-row-btn')) {
+            e.target.closest('tr').remove();
+            recalcTotals();
+        }
+    });
+
+    // ── Per-row: fetch cost/HSN/GST rate when product changes ───────
+    function bindRow(row) {
+        const productSelect = row.querySelector('select[name$="-product"]');
+        const qtyInput = row.querySelector('input[name$="-quantity"]');
+        const markupTierSelect = row.querySelector('select[name$="-markup_tier"]');
+
+        function updateRow() {
+            const productId = productSelect.value;
+            if (!productId) {
+                clearRow(row);
+                recalcTotals();
+                return;
+            }
+            fetch(`/quotations/products/${productId}/cost.json`)
+                .then(res => res.json())
+                .then(data => {
+                    row.dataset.baseCost = data.base_cost;
+                    row.dataset.gstRate = data.gst_rate;
+                    computeRow(row);
+                    recalcTotals();
+                });
+        }
+
+        productSelect.addEventListener('change', updateRow);
+        qtyInput.addEventListener('input', () => { computeRow(row); recalcTotals(); });
+        markupTierSelect.addEventListener('change', () => { computeRow(row); recalcTotals(); });
+    }
+
+    function clearRow(row) {
+        row.querySelector('.base-cost-cell').textContent = '—';
+        row.querySelector('.marked-up-cell').textContent = '—';
+        row.querySelector('.tax-cell').textContent = '—';
+        row.querySelector('.line-total-cell').textContent = '—';
+        delete row.dataset.baseCost;
+        delete row.dataset.gstRate;
+    }
+
+    // ── Client-side preview only — server recalculates on save ──────
+    function computeRow(row) {
+        const baseCost = parseFloat(row.dataset.baseCost || '0');
+        const gstRate = parseFloat(row.dataset.gstRate || '0');
+        const qty = parseFloat(row.querySelector('input[name$="-quantity"]').value || '1');
+        const markupTierSelect = row.querySelector('select[name$="-markup_tier"]');
+        const markup = parseFloat(MARKUP_TIERS[markupTierSelect.value] || '0');
+
+        if (!row.dataset.baseCost) return;
+
+        const markedUpPrice = baseCost + (baseCost * markup / 100);
+        const lineSubtotal = markedUpPrice * qty;
+        const taxAmount = lineSubtotal * gstRate / 100;
+        const lineTotal = lineSubtotal + taxAmount;
+
+        row.dataset.lineSubtotal = lineSubtotal;
+        row.dataset.taxAmount = taxAmount;
+
+        row.querySelector('.base-cost-cell').textContent = '₹' + baseCost.toFixed(2);
+        row.querySelector('.marked-up-cell').textContent = '₹' + markedUpPrice.toFixed(2);
+        row.querySelector('.tax-cell').textContent = '₹' + taxAmount.toFixed(2);
+        row.querySelector('.line-total-cell').textContent = '₹' + lineTotal.toFixed(2);
+    }
+
+    function recalcTotals() {
+        let taxable = 0, tax = 0;
+        itemsBody.querySelectorAll('.item-row').forEach(row => {
+            taxable += parseFloat(row.dataset.lineSubtotal || '0');
+            tax += parseFloat(row.dataset.taxAmount || '0');
+        });
+        document.getElementById('preview-taxable').textContent = '₹' + taxable.toFixed(2);
+        document.getElementById('preview-tax').textContent = '₹' + tax.toFixed(2);
+        document.getElementById('preview-grand').textContent = '₹' + (taxable + tax).toFixed(2);
+    }
+
+    // Bind existing rows on page load
+    itemsBody.querySelectorAll('.item-row').forEach(bindRow);
+})();
+</script>
+{% endblock %}

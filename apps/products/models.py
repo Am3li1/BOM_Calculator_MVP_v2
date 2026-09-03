@@ -1,5 +1,7 @@
 # apps/products/models.py
 
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -15,7 +17,9 @@ class Product(models.Model):
         We never hard-delete products because historical cost data
         linked to them would break. Instead we mark is_deleted=True.
     """
-
+    hsn_code = models.CharField(max_length=10, blank=True)
+    gst_rate = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('18.00'))
+    # choices=[(5, '5%'), (18, '18%')] if you want to lock it down, or free DecimalField if HSN list may grow
     product_name = models.CharField(
         max_length=255,
         help_text="Full name of the product e.g. 3-Door Wardrobe with Mirror"

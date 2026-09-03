@@ -16,6 +16,9 @@ class SystemConfig(models.Model):
     divisor literally, e.g. ".../166".
     """
 
+    company_state = models.CharField(max_length=50, default='Tamil Nadu')
+    company_gstin = models.CharField(max_length=20, blank=True)
+    
     company_name = models.CharField(
         max_length=255,
         default='My Company',

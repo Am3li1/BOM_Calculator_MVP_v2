@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center page-header-row mb-3">
+    <h5 class="mb-0">Customers</h5>
+    {% if user.is_staff %}
+    <a href="{% url 'quotations:customer_create' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1"></i> Add Customer
+    </a>
+    {% endif %}
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">
+        <form method="get" class="d-flex gap-2">
+            <input type="text" name="search" value="{{ search }}"
+                   class="form-control form-control-sm" style="max-width:240px;"
+                   placeholder="Search customers...">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>State</th>
+                    <th>GSTIN</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in page_obj %}
+                <tr>
+                    <td>{{ c.name }}</td>
+                    <td>{{ c.phone_number|default:"—" }}</td>
+                    <td>{{ c.state }}</td>
+                    <td class="font-mono">{{ c.gst_number|default:"—" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center text-muted py-4">No customers yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    {% include 'partials/pagination.html' %}
+    {% endif %}
+</div>
+
+{% endblock %}

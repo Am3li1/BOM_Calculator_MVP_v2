@@ -17,6 +17,7 @@ urlpatterns = [
     path('imports/', include('apps.imports.urls')),
     path('costing/', include('apps.costing.urls')),
     path('suppliers/', include('apps.suppliers.urls')),
+    path('quotations/', include('apps.quotations.urls')),
 ]
 
 # Serve uploaded files (Excel files) during development
