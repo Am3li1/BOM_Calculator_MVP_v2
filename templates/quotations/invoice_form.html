@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="mb-3">
+    <h5 class="mb-0">Edit {{ invoice.invoice_number }}</h5>
+    <small class="text-muted">
+        Line items are fixed from quotation
+        <a href="{% url 'quotations:quotation_detail' invoice.quotation.pk %}">{{ invoice.quotation.quotation_number }}</a>
+        and cannot be changed here.
+    </small>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="content-card mb-3">
+        <div class="card-header">Notes</div>
+        <div class="p-3">
+            <textarea name="notes" class="form-control" rows="4"
+                      placeholder="Payment terms, delivery instructions, etc.">{{ invoice.notes }}</textarea>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a href="{% url 'quotations:invoice_detail' invoice.pk %}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+{% endblock %}

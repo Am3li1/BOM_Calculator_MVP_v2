@@ -3,7 +3,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
-from apps.core.decorators import admin_required
+from apps.core.decorators import admin_required, not_carpenter
 from django.contrib import messages
 from django.db.models import Q
 
@@ -13,6 +13,7 @@ from decimal import Decimal
 
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_list(request):
     """
@@ -86,6 +87,7 @@ def resource_list(request):
 
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_create(request):
     """
@@ -124,6 +126,7 @@ def resource_create(request):
 
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_edit(request, pk):
     """
@@ -163,6 +166,7 @@ def resource_edit(request, pk):
 
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_toggle_active(request, pk):
     """
@@ -182,6 +186,7 @@ def resource_toggle_active(request, pk):
     return redirect('resources:list')
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_delete(request, pk):
     """
@@ -246,6 +251,7 @@ def resource_delete(request, pk):
     return render(request, 'resources/delete.html', context)
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_detail(request, pk):
     from apps.suppliers.models import Supplier, ResourceSupplier
@@ -294,6 +300,7 @@ def resource_detail(request, pk):
     return render(request, 'resources/detail.html', context)
 
 @login_required
+@not_carpenter
 @admin_required
 def resource_set_override(request, pk):
     """

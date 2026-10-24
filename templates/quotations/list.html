@@ -59,7 +59,7 @@
                            class="btn btn-sm btn-outline-secondary">
                             <i class="bi bi-eye"></i>
                         </a>
-                        {% if q.status == 'draft' and user.is_staff %}
+                        {% if q.status != 'accepted' and user.is_staff %}
                         <a href="{% url 'quotations:quotation_edit' q.pk %}" class="btn btn-sm btn-outline-primary">
                             <i class="bi bi-pencil"></i>
                         </a>

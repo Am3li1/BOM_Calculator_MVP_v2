@@ -123,6 +123,22 @@ class Resource(models.Model):
 
     resource_name = models.CharField(max_length=255)
 
+    # ── Tamil display layer ──────────────────────────────────────
+    # resource_name stays the English canonical name used everywhere
+    # (costing, exports, imports). These only help carpenters read and
+    # search — see CLAUDE.md Carpenter Entry and apps.core.search.
+    name_ta = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Tamil display name (optional)."
+    )
+    aliases = models.TextField(
+        blank=True,
+        default='',
+        help_text="Other names this resource is known by, English or Tamil — one per line."
+    )
+
     category = models.CharField(
         max_length=100,
         help_text="Category this resource belongs to."
@@ -197,6 +213,12 @@ class Resource(models.Model):
             f"{self.resource_name} ({self.category})"
             f" — ₹{self.effective_rate}/{self.unit}"
         )
+
+    def save(self, *args, **kwargs):
+        from apps.core.search import normalize_text, normalize_multiline
+        self.name_ta = normalize_text(self.name_ta)
+        self.aliases = normalize_multiline(self.aliases)
+        super().save(*args, **kwargs)
 
     # ── Rate properties ───────────────────────────────────────────
 

@@ -3,7 +3,7 @@ from django import forms
 from django.forms import inlineformset_factory
 
 from .models import Customer, Quotation, QuotationItem, MarkupTier
-
+from apps.core.constants import INDIA_STATES
 
 class CustomerForm(forms.ModelForm):
     class Meta:
@@ -14,7 +14,8 @@ class CustomerForm(forms.ModelForm):
             'phone_number': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-            'state': forms.TextInput(attrs={'class': 'form-control'}),
+            'state': forms.Select(choices=[('', 'Select state...')] + [(s, s) for s in INDIA_STATES],
+                                   attrs={'class': 'form-select'}),
             'gst_number': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g. 33AAQPA5503L1ZT'}),
             'customer_type': forms.Select(attrs={'class': 'form-select'}),
             'tally_ledger_name': forms.TextInput(attrs={'class': 'form-control'}),

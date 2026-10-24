@@ -14,8 +14,8 @@ class ResourceCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Resource)
 class ResourceAdmin(admin.ModelAdmin):
-    list_display   = ['resource_name', 'category', 'unit', 'rate', 'active']
+    list_display   = ['resource_name', 'name_ta', 'category', 'unit', 'rate', 'active']
     list_filter    = ['category', 'active']
-    search_fields  = ['resource_name', 'category']
+    search_fields  = ['resource_name', 'name_ta', 'aliases', 'category']
     list_editable  = ['rate', 'active']
     ordering       = ['category', 'resource_name']

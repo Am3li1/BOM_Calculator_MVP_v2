@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md — BOM Costing System
 
 > **Living document.** Update this file whenever major features are completed or the roadmap shifts.
-> Last updated: July 2026 — Dimension formula split (CFT/SFT by material type) and BOM UI fixes complete, on top of production deployment on Coolify/Docker/PostgreSQL, accessible via Tailscale HTTPS
+> Last updated: September 2026 — Tailscale removed; app is now publicly reachable over HTTPS at `bom.lumelabs.dev` via Coolify/Traefik. Planning underway for django-allauth authentication (MFA, lockout), a new Carpenter role, and staged BOM submissions from the shop floor. Dimension formula split (CFT/SFT by material type) and BOM UI fixes previously completed, on top of production deployment on Coolify/Docker/PostgreSQL.
 
 ---
 
@@ -9,7 +9,7 @@
 
 **Current Version:** MVP v1.0 — Feature-complete for core BOM costing. **Deployed to production.**
 
-**Overall Health:** Functional and deployed to production. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration complete — live on Coolify-managed Postgres. App is reachable over Tailscale via HTTPS at `https://prod-node-01.tail7e0384.ts.net`. WoodPart costing now correctly distinguishes solid wood (CFT) from sheet goods (SFT) by material type, with full unit conversion and import-time validation.
+**Overall Health:** Functional and deployed to production. All core workflows work end-to-end. All medium-priority bugs resolved. Role-based permissions and user management UI complete. PostgreSQL migration complete — live on Coolify-managed Postgres. Tailscale has been removed; the app is now publicly reachable over HTTPS at `https://bom.lumelabs.dev`, which means **authentication is now the sole access control** — see the Security/Authentication plan below. WoodPart costing now correctly distinguishes solid wood (CFT) from sheet goods (SFT) by material type, with full unit conversion and import-time validation.
 
 ---
 
@@ -21,6 +21,16 @@
 - **User Management UI** — list, create, edit, change password (admin only)
 - No self-deactivation — checkbox disabled when editing own account
 - Roles set via `is_staff` toggle in user edit form
+
+---
+
+### Module: Carpenter Role + Tamil Display Names
+**Status: ✅ Complete (Oct 2026)** — entry screens not yet built
+- `UserProfile` (role admin/viewer/carpenter + language en/ta), auto-created per user, backfilled by data migration (`is_staff` → admin, else viewer). `is_staff` still works and stays in sync.
+- `@not_carpenter` on every existing view (58); carpenters get 403 everywhere except `/carpenter/` (placeholder) and are redirected there after login. `CarpenterLockoutTests` sweeps every URL, GET + POST.
+- User Management: Role + Language selects replace the Admin checkbox; admins can't remove their own Admin role. Also fixed: editing your own account no longer fails as "cannot deactivate your own account".
+- `name_ta` / `aliases` on `Resource` and `Part` (admin, Resource form). Resource import accepts optional `Tamil Name` / `Aliases` columns.
+- `apps/core/search.py: search_by_name` — English name / `name_ta` / aliases, case-insensitive, NFC-normalised.
 
 ---
 
@@ -120,10 +130,10 @@ Previously, `WoodPart.calculated_quantity` used one formula for every material a
 
 ## Completed: PostgreSQL Migration + Production Deployment
 
-### Module: Deployment (Coolify / Docker / Tailscale)
-**Status: ✅ Complete**
+### Module: Deployment (Coolify / Docker / Contabo)
+**Status: ✅ Complete** — Tailscale removed; app is now public-internet-facing.
 
-Deployment target changed from the originally planned Hostinger VPS to a **physical Debian 12 server in the client's Coimbatore office** (`prod-node-01`), managed via **Coolify** and accessed exclusively over **Tailscale** (no public internet exposure).
+Deployment target: **Contabo VPS**, managed via **Coolify**, publicly reachable over HTTPS at `bom.lumelabs.dev`. Tailscale (previously used for network-level access control) has been removed — the app no longer has a private-network fallback, so authentication is now the only access control (see CLAUDE.md Security section).
 
 #### Code changes
 - `requirements.txt` — `psycopg2-binary==2.9.10`, `dj-database-url==2.2.0`
@@ -131,11 +141,10 @@ Deployment target changed from the originally planned Hostinger VPS to a **physi
 - `Dockerfile`, `docker-compose.yml`, `docker-entrypoint.sh` — reviewed and corrected for production use
 
 #### Infrastructure
-- **Server:** Debian 12, hostname `prod-node-01.tail7e0384.ts.net`, Tailscale IP `100.75.145.23`
-- **Access:** SSH key auth, passwordless sudo for `santosh`; app reachable only to devices on the tailnet
-- **Coolify:** v4.1.2, Docker-based orchestration, GitHub-integrated auto-build from `Am3li1/BOM_Calculator_MVP_v2` (branch `main`)
+- **Server:** Contabo VPS running Coolify
+- **Coolify:** Docker-based orchestration, GitHub-integrated auto-build from `Am3li1/BOM_Calculator_MVP_v2` (branch `main`)
 - **Database:** PostgreSQL 16-alpine, Coolify-managed Docker resource, persistent volume
-- **Reverse proxy / TLS:** Traefik (Coolify-managed) for internal routing; **Tailscale Serve** terminates HTTPS with an auto-issued trusted cert for `prod-node-01.tail7e0384.ts.net`
+- **Reverse proxy / TLS:** Traefik (Coolify-managed), Let's Encrypt cert for `bom.lumelabs.dev`
 
 #### Deployment phases — all complete
 | Phase | Task | Status |
@@ -146,17 +155,17 @@ Deployment target changed from the originally planned Hostinger VPS to a **physi
 | 4 | Deploy application (Docker build + rolling update) | ✅ Done |
 | 5 | Verify migrations, static files, login, admin | ✅ Done |
 | 6 | Confirm final URL, review settings | ✅ Done |
-| 7 | Clarify access model — Tailscale membership = access control | ✅ Done |
-| 8 | Enable HTTPS via Tailscale Serve | ✅ Done |
+| 7 | Remove Tailscale; expose app publicly via Traefik/Coolify HTTPS | ✅ Done |
+| 8 | Point `bom.lumelabs.dev` at the server and issue Let's Encrypt cert | ✅ Done |
 
-#### Issues encountered and resolved during deployment
-1. **Permission denied writing Coolify-managed directories** (`/data/coolify/databases/...`, `/data/coolify/applications/...`) — root cause: `/data/coolify` and its subdirs are owned by uid `9999` with mode `700`, blocking traversal for the `santosh` SSH user Coolify automation runs as. Fixed with targeted `setfacl` (traverse-only on parents) and `chown` (ownership on the specific resource dirs — `9999`/uid `70` for Postgres-owned paths, `santosh` for app `.env` writes).
-2. **`santosh` missing from `docker` group** — caused `permission denied` on direct `docker` CLI use and likely contributed to inconsistent automation behavior. Fixed with `usermod -aG docker santosh`.
-3. **App unreachable externally on port 8000** — Coolify doesn't map container ports to the host directly; traffic routes through Traefik by hostname. Resolved by using Coolify's auto-assigned `sslip.io` domain and adding it to `ALLOWED_HOSTS`.
-4. **`400 Bad Request` (DisallowedHost)** — `ALLOWED_HOSTS` didn't include the sslip.io domain; fixed by updating the env var and redeploying (env var changes require an explicit redeploy to regenerate `.env`).
-5. **App unreachable from devices outside the tailnet** — expected behavior, not a bug; confirmed the access model (Tailscale membership required) and documented it as the intended security boundary.
-6. **HTTPS via `tailscale serve` initially failed ("Serve is not enabled on your tailnet")** — root cause: the Tailscale Serve enablement link was opened while logged into the wrong Tailscale account (`Am3li1@github` instead of `visanty@`, the account that owns `prod-node-01`). Fixed by re-enabling Serve while logged into the correct account.
-7. **`403 CSRF verification failed` after enabling HTTPS** — `CSRF_TRUSTED_ORIGINS` only had `http://` entries; added the `https://prod-node-01.tail7e0384.ts.net` origin and redeployed.
+> **Note:** Steps 1–6 above were originally carried out against a physical Debian 12 office server reached only over Tailscale. That machine/access model has since been retired; the app now runs on a Contabo VPS, publicly reachable at `https://bom.lumelabs.dev` (see "Production (live)" under Deployment Notes below, and CLAUDE.md's Deployment Information / Security sections for the current, authoritative setup).
+
+#### Issues encountered and resolved during deployment (historical)
+1. **Permission denied writing Coolify-managed directories** (`/data/coolify/databases/...`, `/data/coolify/applications/...`) — root cause: `/data/coolify` and its subdirs are owned by uid `9999` with mode `700`, blocking traversal for the SSH user Coolify automation runs as. Fixed with targeted `setfacl` (traverse-only on parents) and `chown` (ownership on the specific resource dirs).
+2. **Deploy user missing from `docker` group** — caused `permission denied` on direct `docker` CLI use and likely contributed to inconsistent automation behavior. Fixed with `usermod -aG docker <user>`.
+3. **App unreachable externally on port 8000** — Coolify doesn't map container ports to the host directly; traffic routes through Traefik by hostname. Resolved by pointing the production domain at the server and adding it to `ALLOWED_HOSTS`.
+4. **`400 Bad Request` (DisallowedHost)** — `ALLOWED_HOSTS` didn't include the production domain; fixed by updating the env var and redeploying (env var changes require an explicit redeploy to regenerate `.env`).
+5. **`403 CSRF verification failed` after enabling HTTPS** — `CSRF_TRUSTED_ORIGINS` was missing the `https://` origin for the production domain; added it and redeployed.
 
 ---
 
@@ -164,8 +173,11 @@ Deployment target changed from the originally planned Hostinger VPS to a **physi
 
 | Priority | Feature                             | File / Location                             | Notes                                                                                                                                                                                                                                 |
 | -------- | ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🔴 HIGH  | **django-allauth migration + MFA + login lockout** | `apps/accounts/` | Public-facing app now depends on authentication as its only access control — see CLAUDE.md Security section. Replace built-in auth with django-allauth; add MFA for Admins and lockout on repeated failed logins. |
+| 🔴 HIGH  | **Carpenter staged BOM entry screens** | `apps/carpenter` — `BOMSubmission`, `SubmissionLine` | Role, lockout, Tamil fields and search helper are ✅ done (Oct 2026). Remaining: staging models, carpenter entry UI (Tamil via `name_ta`/`aliases` + `search_by_name`), admin approve/reject. See CLAUDE.md Carpenter Entry section. |
+| 🟡 MED   | **Fix 6 stale tests** | `apps/products/tests.py`, `apps/suppliers/tests.py`, `apps/resources/tests.py` | Log in as non-staff against now admin-only views / test a removed formula field. Pre-date the Carpenter work. |
 | 🔴 HIGH  | **Modern UI Redesign (Dark Theme)** | Global templates & static assets            | Redesign the application with a modern dark theme, improved typography, spacing, cards, tables, forms, and responsive layout while preserving existing functionality. Dimension add/edit forms and the BOM list table got targeted layout/sizing fixes this session — the broader global redesign is still pending.|
-| 🟢 LOW   | **Password reset flow** | `apps/accounts/` | No self-service reset yet |
+| 🟢 LOW   | **Password reset flow** | `apps/accounts/` | Superseded by django-allauth migration above, which includes password reset |
 | 🟢 LOW   | **Overhead allocation** | `apps/costing/` | % overhead on top of direct costs |
 | 🟢 LOW   | **Audit trail** | New middleware or model mixin | Who changed what and when |
 | 🟢 LOW   | **Supplier additional fields** | `apps/suppliers/models.py` | Address, email, payment terms, lead time |
@@ -233,15 +245,17 @@ If "Parts" column is empty, multiple cuts of same material overwrite each other 
 
 ## Recent Changes Log
 
+| Oct 2026 | **Carpenter role + Tamil display names** — `UserProfile` + backfill migration; `@not_carpenter` on all views with resolver-sweep 403 tests; `apps.carpenter` placeholder + login redirect; `name_ta`/`aliases` on Resource & Part; optional import columns; `search_by_name` helper | `apps/accounts/`, `apps/core/{decorators,roles,search,context_processors}.py`, `apps/carpenter/`, all `views.py`, `apps/imports/services.py` |
 | Jul 2026 | **Dimension formula split by material type (CFT vs SFT)** — `Resource.material_type` field added; `WoodPart.calculated_quantity` branches solid_wood (unit-converted CFT) / sheet (Width×Breadth SFT, no divisor, Length unused) / other (legacy unit-naive formula preserved) | `apps/resources/models.py`, `apps/bom/models.py`, new `apps/core/units.py` |
 | Jul 2026 | **Import validation extended** — `validate_wood` rejects invalid/missing `WU`/`BU`/`LU` unit cells, skipping the Length-unit check for sheet-material rows (Length is unused there); `import_wood` simplified to trust validated units instead of silently defaulting | `apps/imports/services.py` |
 | Jul 2026 | **Resource form exposes `material_type`** — previously only settable via Django admin/shell; now a dropdown on the Resource create/edit form that auto-suggests a Unit (`cft`/`sqft`) | `apps/resources/forms.py`, `templates/resources/form.html` |
 | Jul 2026 | **WoodPart add/edit forms redesigned** — Material `<select>` replaced with a type-to-filter, scrollable combobox (vanilla JS); Width/Breadth/Length units auto-default based on the selected resource's `material_type`; Length field greys out (readonly) for sheet materials; layout/font fixes (top-aligned dimension rows, larger/thinner fields); product code removed from page headers | `apps/bom/views.py`, `templates/bom/woodpart_add.html`, `templates/bom/woodpart_edit.html` |
 | Jul 2026 | **Fixed BOM list dimensions table column-shift bug** — an extra `<td>` (arrow icon) with no matching `<th>` was silently shifting every value one column right (Width showing under Breadth, etc); merged into the Material cell | `templates/bom/list.html` |
 | Jul 2026 | **Regression test suite added** — 20 tests total across formula correctness, unit conversion, and import unit validation | `apps/bom/tests.py`, `apps/core/tests.py`, `apps/imports/tests.py` |
+| Sep 2026 | **Tailscale removed; app made publicly reachable** — Coolify/Traefik now terminates HTTPS directly for the public domain `bom.lumelabs.dev` (Let's Encrypt). Authentication is now the sole access control. Planning started for django-allauth (MFA, lockout), a Carpenter role, and staged `BOMSubmission`/`SubmissionLine` entry with Tamil display fields | `CLAUDE.md`, `PROJECT_STATUS.md` |
 | Jul 2026 | Roadmap updated for Version 2 — Next priority is Parts Module and UI/UX redesign after successful production deployment | PROJECT_STATUS.md |
-| Jul 2026 | **Production deployment completed** — Coolify + Docker + PostgreSQL on Debian 12 (`prod-node-01`), accessed via Tailscale HTTPS (`tailscale serve`) | `PROJECT_STATUS.md`, `CLAUDE.md`, Coolify env vars |
-| Jul 2026 | **Deployment target changed again** — Hostinger VPS plan replaced by client's physical Debian 12 office server, managed via Coolify | `PROJECT_STATUS.md`, `CLAUDE.md` |
+| Jul 2026 | **Production deployment completed** — Coolify + Docker + PostgreSQL, initially on a Debian 12 office server behind Tailscale *(superseded — see Sep 2026 entry above; now on Contabo VPS, public HTTPS)* | `PROJECT_STATUS.md`, `CLAUDE.md`, Coolify env vars |
+| Jul 2026 | **Deployment target changed again** — Hostinger VPS plan replaced by client's physical Debian 12 office server, managed via Coolify *(superseded — see above)* | `PROJECT_STATUS.md`, `CLAUDE.md` |
 | Jun 2026 | **Deployment target changed** — Oracle Cloud dropped; Hostinger VPS KVM 4 (Ubuntu 24.04) adopted *(superseded — see above)* | `PROJECT_STATUS.md`, `CLAUDE.md` |
 
 | Date | Change | Files |

@@ -2,6 +2,7 @@
 
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import admin_required, not_carpenter
 from collections import defaultdict
 from django.db import models
 from apps.products.models import Product
@@ -16,6 +17,7 @@ from django.http import HttpResponse
 
 
 @login_required
+@not_carpenter
 def costing_list(request):
     """
     Shows all active products with optional search filtering.
@@ -61,6 +63,7 @@ def costing_list(request):
 
 
 @login_required
+@not_carpenter
 def cost_sheet(request, product_pk):
     """
     Displays the full cost sheet for a single product.
@@ -158,6 +161,8 @@ def cost_sheet(request, product_pk):
 
 
 @login_required
+@not_carpenter
+@admin_required
 def export_full_workbook(request):
     """
     Exports the entire database as a single Excel workbook with 7 sheets:

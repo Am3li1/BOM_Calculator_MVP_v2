@@ -20,10 +20,12 @@
                 ₹{{ portfolio_total|floatformat:2 }}
             </div>
         </div>
+        {% if user.is_staff %}
         <a href="{% url 'costing:export_full' %}"
            class="btn btn-success btn-sm">
             <i class="bi bi-download me-1"></i> Export Full Workbook
         </a>
+        {% endif %}
     </div>
 </div>
 

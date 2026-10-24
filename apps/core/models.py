@@ -24,6 +24,10 @@ class SystemConfig(models.Model):
         default='My Company',
         help_text="Your company name, shown in reports and headers."
     )
+    company_address = models.TextField(
+        blank=True,
+        help_text="Company address shown on quotations, invoices, and PDFs."
+    )
 
     updated_at = models.DateTimeField(auto_now=True)
 

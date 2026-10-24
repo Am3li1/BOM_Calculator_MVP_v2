@@ -11,12 +11,12 @@
            class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-file-earmark-pdf me-1"></i> View PDF
         </a>
-        {% if quotation.status == 'draft' and user.is_staff %}
+        {% if quotation.status != 'accepted' and user.is_staff %}
         <a href="{% url 'quotations:quotation_edit' quotation.pk %}" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-pencil me-1"></i> Edit
         </a>
         <form method="post" action="{% url 'quotations:quotation_delete' quotation.pk %}" class="d-inline"
-              onsubmit="return confirm('Delete this draft? This cannot be undone.');">
+              onsubmit="return confirm('Delete this quotation? This cannot be undone.');">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i> Delete</button>
         </form>
@@ -33,6 +33,24 @@
         {% endif %}
     </div>
 </div>
+
+{% if user.is_staff %}
+<div class="mb-3">
+    {% if quotation.status == 'accepted' and not quotation.invoice %}
+    <form method="post" action="{% url 'quotations:quotation_convert_to_invoice' quotation.pk %}" class="d-inline"
+          onsubmit="return confirm('Generate an invoice from this quotation?');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-success btn-sm">
+            <i class="bi bi-receipt me-1"></i> Convert to Invoice
+        </button>
+    </form>
+    {% elif quotation.invoice %}
+    <a href="{% url 'quotations:invoice_detail' quotation.invoice.pk %}" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-receipt me-1"></i> View Invoice {{ quotation.invoice.invoice_number }}
+    </a>
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="content-card mb-3">
     <div class="p-3 small d-flex justify-content-between">
@@ -53,6 +71,27 @@
         {% if quotation.customer.address %}<div>{{ quotation.customer.address }}</div>{% endif %}
         <div>State: {{ quotation.customer.state }}</div>
         <div class="font-mono">GSTIN: {{ quotation.customer.gst_number }}</div>
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Billing &amp; Shipping</div>
+    <div class="p-3 small row">
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Delivered From</div>
+            <div>{{ company.company_address|linebreaksbr }}</div>
+            <div>State: {{ company.company_state }}</div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Billing Address</div>
+            <div>{{ quotation.billing_address|default:"—"|linebreaksbr }}</div>
+            <div>State: {{ quotation.billing_state|default:"—" }}</div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Shipping Address</div>
+            <div>{{ quotation.shipping_address|default:"—"|linebreaksbr }}</div>
+            <div>State: {{ quotation.shipping_state|default:"—" }}</div>
+        </div>
     </div>
 </div>
 
@@ -99,32 +138,7 @@
 </div>
 
 <div class="content-card mb-3" style="max-width:400px;margin-left:auto;">
-    <div class="card-header">Tax Summary</div>
-    <div class="table-responsive">
-        <table class="table mb-0 small">
-            <thead>
-                <tr>
-                    <th>Rate</th>
-                    <th class="text-end">Taxable</th>
-                    <th class="text-end">CGST</th>
-                    <th class="text-end">SGST</th>
-                    <th class="text-end">IGST</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for bucket in tax_summary %}
-                <tr>
-                    <td>{{ bucket.rate }}%</td>
-                    <td class="text-end font-mono">{{ bucket.taxable|floatformat:2 }}</td>
-                    <td class="text-end font-mono">{{ bucket.cgst|floatformat:2 }}</td>
-                    <td class="text-end font-mono">{{ bucket.sgst|floatformat:2 }}</td>
-                    <td class="text-end font-mono">{{ bucket.igst|floatformat:2 }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <div class="p-3 border-top">
+    <div class="p-3">
         <div class="d-flex justify-content-between fw-bold">
             <span>Grand Total</span>
             <span class="font-mono">₹{{ quotation.grand_total|floatformat:2 }}</span>

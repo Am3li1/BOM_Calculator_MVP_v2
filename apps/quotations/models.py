@@ -79,6 +79,14 @@ class Quotation(models.Model):
     tally_pushed = models.BooleanField(default=False)
     tally_pushed_at = models.DateTimeField(null=True, blank=True)
     tally_last_response = models.TextField(blank=True)  # raw XML response, for debugging failures
+        # Snapshot at quotation-creation time — editable per quotation even
+    # though they usually start pre-filled from the Customer record.
+    # Kept separate from Customer.address/state so one customer can have
+    # different billing vs delivery addresses across different orders.
+    billing_address = models.TextField(blank=True)
+    billing_state = models.CharField(max_length=50, blank=True)
+    shipping_address = models.TextField(blank=True)
+    shipping_state = models.CharField(max_length=50, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -168,3 +176,100 @@ class TallyLedgerMapping(models.Model):
 
     def __str__(self):
         return f"{self.gst_rate}% — {self.get_customer_type_display()}"
+
+
+class Invoice(models.Model):
+    STATUS_CHOICES = [
+        ('draft', 'Draft'), ('finalized', 'Finalized'), ('cancelled', 'Cancelled'),
+    ]
+
+    # Independent sequence from quotation_number — deliberately not derived,
+    # since GST invoice numbers must be gap-free and shouldn't be coupled to
+    # how many quotations were created/rejected/redrafted.
+    invoice_number = models.CharField(max_length=30, unique=True)  # e.g. INV-2026-0001
+
+    # One quotation can only ever produce one invoice. PROTECT so a quotation
+    # can never be hard-deleted out from under an existing invoice.
+    quotation = models.OneToOneField(Quotation, on_delete=models.PROTECT, related_name='invoice')
+
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    invoice_date = models.DateField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+
+    # Snapshot totals — same pattern as Quotation. Copied from the quotation
+    # at conversion time, then independently recalculated if items are
+    # edited while still in draft.
+    total_taxable = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_cgst = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_sgst = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_igst = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    grand_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    billing_address = models.TextField(blank=True)
+    billing_state = models.CharField(max_length=50, blank=True)
+    shipping_address = models.TextField(blank=True)
+    shipping_state = models.CharField(max_length=50, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.invoice_number
+
+    @property
+    def customer(self):
+        return self.quotation.customer
+
+    @property
+    def tax_summary(self):
+        """Mirrors Quotation.tax_summary exactly — see that method's docstring."""
+        from collections import defaultdict
+        from decimal import Decimal
+
+        buckets = defaultdict(lambda: {
+            'taxable': Decimal('0'), 'cgst': Decimal('0'),
+            'sgst': Decimal('0'), 'igst': Decimal('0'),
+        })
+        for item in self.items.all():
+            b = buckets[item.gst_rate]
+            b['taxable'] += item.base_cost * item.quantity + (
+                item.base_cost * item.markup_percent / 100 * item.quantity
+            )
+            b['cgst'] += item.cgst_amount
+            b['sgst'] += item.sgst_amount
+            b['igst'] += item.igst_amount
+
+        return sorted(
+            [{'rate': rate, **totals} for rate, totals in buckets.items()],
+            key=lambda x: x['rate']
+        )
+
+
+class InvoiceItem(models.Model):
+    TAX_TYPE_CHOICES = [('CGST_SGST', 'CGST + SGST'), ('IGST', 'IGST')]
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='items')
+    product = models.ForeignKey('products.Product', on_delete=models.PROTECT)
+
+    base_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    markup_tier = models.ForeignKey(MarkupTier, on_delete=models.PROTECT, null=True, blank=True)
+    markup_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    quantity = models.PositiveIntegerField(default=1)
+    hsn_code = models.CharField(max_length=10, blank=True)
+    gst_rate = models.DecimalField(max_digits=4, decimal_places=2)
+
+    tax_type = models.CharField(max_length=10, choices=TAX_TYPE_CHOICES)
+    cgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    sgst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    igst_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    @property
+    def marked_up_price(self):
+        return self.base_cost + (self.base_cost * self.markup_percent / 100)
+
+    @property
+    def line_subtotal(self):
+        return self.marked_up_price * self.quantity

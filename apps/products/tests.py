@@ -17,7 +17,7 @@ class ProductListPaginationTests(TestCase):
         ])
 
     def test_pagination_controls_appear_when_more_than_page_size(self):
-        self.client.login(username='tester', password='pass')
+        self.client.force_login(self.user)
         response = self.client.get(reverse('products:list'))
 
         self.assertEqual(response.status_code, 200)
@@ -26,7 +26,7 @@ class ProductListPaginationTests(TestCase):
         self.assertContains(response, 'page=2')
 
     def test_filters_are_preserved_when_navigating_pages(self):
-        self.client.login(username='tester', password='pass')
+        self.client.force_login(self.user)
         response = self.client.get(
             reverse('products:list') + '?search=Product&status=active&page=2'
         )

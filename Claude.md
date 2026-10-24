@@ -150,8 +150,19 @@ def product_list(request): ...
 def product_create(request): ...
 ```
 
-`@admin_required` raises `PermissionDenied` (→ 403) if `request.user.is_staff` is False.
+`@admin_required` raises `PermissionDenied` (→ 403) if `request.user.is_staff` is False (or the user is a carpenter).
 `@login_required` must still be present — it handles unauthenticated users before `@admin_required` runs.
+
+**Every view outside `apps.carpenter` must also carry `@not_carpenter`**, directly below `@login_required`:
+
+```python
+@login_required
+@not_carpenter
+@admin_required          # only on mutating views
+def product_create(request): ...
+```
+
+`apps/accounts/tests.py: CarpenterLockoutTests` walks the URL resolver and fails if any URL in the pre-existing app namespaces doesn't return 403 to a carpenter (GET and POST). When adding a **new app** that carpenters must not see, add its namespace to `BLOCKED_NAMESPACES` there. Carpenter-area views use `@carpenter_required` (carpenter + admin) instead.
 
 ### Setting roles
 Via Django admin → Users → edit user → check/uncheck "Staff status".
@@ -212,7 +223,7 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 
 | Sheet | Required Columns | Notes |
 |---|---|---|
-| `Resource` | Resource, Category, Units, Rate | header row 0 |
+| `Resource` | Resource, Category, Units, Rate | header row 0. Optional: `Tamil Name`, `Aliases` — only non-blank cells overwrite; workbooks without them import unchanged |
 | `Products` | (column A, no header) | skips: column1, products, select, '' |
 | `BOM` | Product, Resource, Quantity | Product column forward-filled |
 | `Wood, Ply MDF` | Product, Resource, Width, Breath, Length | "Breath" — typo in spec, must match |
@@ -260,11 +271,9 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 
 ## Testing
 
-- **Run:** `python manage.py test apps.imports.tests` (full dotted path on Windows)
-- **6 tests passing:**
-  - `ImportServicesTests` — `_sheet_exists` closes temp files
-  - `EffectiveRateTest` — rate priority chain (3 tests)
-  - `BOMItemCostTest` — cost calculation (2 tests)
+- **Run:** `python manage.py test apps.accounts.tests apps.core.tests apps.imports.tests apps.bom.tests apps.products.tests apps.resources.tests apps.suppliers.tests apps.costing.tests` (full dotted paths on Windows)
+- Security-critical: `apps.accounts.tests.CarpenterLockoutTests` — every pre-existing URL returns 403 to a carpenter. Never weaken or skip it.
+- Known stale tests (6, pre-date the Carpenter work): `products.ProductListPaginationTests` ×2, `suppliers.SupplierViewsTests` ×2 log in as non-staff against now admin-only views; `resources.ResourceFormFormulaExpressionTests` ×2 test a removed formula field.
 - Add tests alongside new features, especially cost calculation changes.
 
 ---
@@ -280,19 +289,66 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 ---
 
 ## Deployment Information
-- **Platform:** Physical Debian 12 server (`prod-node-01`), client's Coimbatore office — deployed and managed via **Coolify** (v4.1.2)
-- **Stack:** Tailscale (network access) → Tailscale Serve (HTTPS/TLS termination) → Traefik (Coolify's reverse proxy) → Gunicorn → Django → PostgreSQL (Docker container, Coolify-managed)
+- **Platform:** Contabo VPS, deployed and managed via **Coolify**
+- **Stack:** Public internet → Traefik (Coolify's reverse proxy, Let's Encrypt TLS) → Gunicorn → Django → PostgreSQL (Docker container, Coolify-managed)
 - **Containerization:** Docker, built from repo's `Dockerfile` via Coolify's GitHub integration (`Am3li1/BOM_Calculator_MVP_v2`, branch `main`)
 - **Entrypoint:** `docker-entrypoint.sh` — waits for Postgres, runs migrations, collectstatic, then Gunicorn
 - **Database:** PostgreSQL 16-alpine, Coolify-managed Docker resource — persistent volume, no data loss on redeploy
-- **Access model:** Server only reachable via Tailscale (tailnet: `visanty@`). No public internet exposure. Devices must be added to the tailnet to access the app — this is the access control mechanism (not IP/firewall based).
-- **URLs:**
-  - HTTPS (primary): `https://prod-node-01.tail7e0384.ts.net`
-  - HTTP (legacy/fallback): `http://otiwlmrwnyx3j1r42w7qe23r.100.75.145.23.sslip.io`
+- **Access model:** App is publicly reachable over HTTPS. There is no network-level access control — **authentication is the only access control** (see Security section below).
+- **URL:** `https://bom.lumelabs.dev` (primary, Coolify-managed Let's Encrypt cert)
 - **Default superuser:** created manually via `docker exec ... python manage.py createsuperuser` — change credentials as needed.
 - **Env vars required (set in Coolify UI):** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (points to internal Docker network container name, not host IP)
 - **Timezone:** `Asia/Kolkata` (IST)
-- **User roles:** Set `is_staff=True` for admin users in Django admin.
+- **User roles:** Set via the Authentication section below (Admin / Viewer / Carpenter).
+
+---
+
+## Security
+
+The app is **public-internet-facing** (no VPN/tailnet/IP allowlist in front of it). Authentication is therefore the only access control, and it must be treated as security-critical, not incidental.
+
+Rules:
+1. **MFA required for Admin accounts.** Admins can see all costs/rates and mutate all data — compromise here is the highest-impact scenario.
+2. **Account lockout on repeated failed logins** (django-allauth / django-axes style rate limiting) — mitigates credential-stuffing and brute force against a publicly reachable login page.
+3. **No rates or costs are ever visible to the Carpenter role.** Carpenter-facing views/templates/serializers must not include `resource.rate`, `effective_rate`, `BOMItem.cost`, `WoodPart` cost, or any cost-sheet data — enforced server-side, not just hidden in the template.
+4. **Every view enforces its role check server-side.** Never rely on hiding a link/button in a template as the only protection — a Carpenter or Viewer hitting a URL directly must be blocked by the view itself (decorator or explicit check), same pattern as `@admin_required` today.
+5. **HTTPS-only cookies.** `SESSION_COOKIE_SECURE = True`, `CSRF_COOKIE_SECURE = True` in production settings, since there's no longer a trusted private network fallback.
+6. **`DEBUG = False` in production, always.** A public-facing Django app with `DEBUG=True` leaks stack traces, settings, and source snippets to anyone who can trigger a 500.
+
+---
+
+## Authentication
+
+Auth is built on **django-allauth**, not Clerk — Clerk has no first-party Django SDK and would require a JS frontend, which conflicts with this project's server-rendered-only architecture (see Tech Stack / Development Constraints).
+
+### Roles
+
+| Role | Mechanism | Access |
+|---|---|---|
+| **Admin** | `is_staff=True` | Everything — create, edit, delete, toggle, clone, import, supplier linking, user management. Full cost/rate visibility. |
+| **Viewer** | `is_staff=False`, no Carpenter group | Read-only: lists, detail pages, cost sheets, BOM view, import history. Full cost/rate visibility. |
+| **Carpenter** | `UserProfile.role='carpenter'` (always `is_staff=False`) | Restricted, cost-free view: can see product/BOM/part structure and submit new BOM data (see Carpenter Entry below), but **never** sees rates, costs, or cost sheets. 403 on every page except `/carpenter/`; redirected there after login. |
+
+**`apps.accounts.UserProfile`** (OneToOne → User, `related_name='profile'`): `role` (admin/viewer/carpenter) + `language` (en/ta). Auto-created for every user by a `post_save` signal (`apps/accounts/signals.py`). `is_staff` stays authoritative for admin and is kept in sync both ways: saving a profile sets `is_staff = (role == 'admin')`; saving a User with `is_staff=True` promotes the role to admin, and `is_staff=False` demotes admin → viewer (carpenter is preserved). Read roles via `apps/core/roles.py` (`get_role`, `is_carpenter`); templates get `user_role` / `is_carpenter` from `apps.core.context_processors.user_role`. Roles are set in User Management (Role select) or the Django admin user page.
+
+Role checks remain server-side decorators in `apps/core/decorators.py` (`admin_required`, `not_carpenter`, `carpenter_required`) — do not introduce a separate permissions system.
+
+---
+
+## Carpenter Entry
+
+Carpenters need a way to submit BOM/dimension data from the shop floor without direct write access to production `BOMItem`/`WoodPart` records, and without seeing costs. Design:
+
+- **`BOMSubmission`** — a staging header record: which product, which carpenter (user), timestamp, status (`pending` / `approved` / `rejected`).
+- **`SubmissionLine`** — staging line items under a `BOMSubmission`: resource, quantity or dimensions, part name. Mirrors the shape of `BOMItem`/`WoodPart` but is never itself costed and never feeds the cost sheet directly.
+- **Admin approval required.** An Admin reviews pending `BOMSubmission`s and approves/rejects; approval is the only path that copies a `SubmissionLine` into real `BOMItem`/`WoodPart` records. Rejections stay in the staging table for audit/history.
+- **Data is stored in English canonical form.** `Resource`, `Product`, and part names remain the single English source of truth used everywhere else in the system (costing, exports, imports).
+- **Tamil is a display layer only**, via `name_ta` / `aliases` fields (planned: on `Resource`, possibly `Product`/`Part`) — used to render the Carpenter-facing submission UI in Tamil and to accept Tamil input, but always resolved back to the canonical English record before storage. No parallel Tamil data model.
+
+**Implemented so far:**
+- Carpenter role + lockout (see Authentication above). `apps.carpenter` exists with only a placeholder `home` view at `/carpenter/` — `BOMSubmission` / `SubmissionLine` and entry screens are **not yet built**.
+- `name_ta` (CharField, blank) and `aliases` (TextField, blank, one per line) on `Resource` and `Part`. Both are NFC-normalised on save.
+- `apps/core/search.py: search_by_name(queryset, query, name_field)` — case-insensitive match against the English name field, `name_ta` and `aliases` (query is NFC-normalised so differently-typed Tamil vowel signs still match). Use it for any carpenter-facing lookup.
 
 ### Known host-level quirk
 `/data/coolify/databases/` and `/data/coolify/applications/` subdirectories are sometimes created by Coolify with owner `santosh:santosh` and no traverse permission on parent dirs (`/data/coolify`, `/data/coolify/databases`, `/data/coolify/applications` are `9999:root`, mode 700). This breaks Coolify's own file-write steps (`.env` generation, Postgres init files) with `Permission denied`. Fixed via:
@@ -312,7 +368,7 @@ Watch for this same pattern if new databases/apps are added later. Also: `santos
 1. **No CSRF bypass** — all POST forms must include `{% csrf_token %}`.
 2. **`ResourceSupplier.supplier_code`** uses join table PK, not Supplier PK — misleading name.
 3. **~~SQLite in production on Render~~ — resolved.** Now deployed on PostgreSQL via Coolify; data persists across deploys.
-3a. **CSRF_TRUSTED_ORIGINS must include every scheme+host the app is accessed by** — currently needs both `http://` (sslip.io fallback) and `https://` (Tailscale Serve) entries for `prod-node-01.tail7e0384.ts.net`. Missing an origin here causes `403 CSRF verification failed` even though the request otherwise succeeds.
+3a. **CSRF_TRUSTED_ORIGINS must include every scheme+host the app is accessed by** — currently needs the `https://bom.lumelabs.dev` origin. Missing an origin here causes `403 CSRF verification failed` even though the request otherwise succeeds.
 4. **WoodPart part_name fallback** — if "Parts" column is empty, falls back to resource name. Multiple cuts of same material for same product will overwrite each other on re-import.
 5. **Portfolio cost on dashboard** — summed in Python, not SQL. Acceptable for MVP; will slow with very large datasets.
 
@@ -322,7 +378,7 @@ Watch for this same pattern if new databases/apps are added later. Also: `santos
 
 1. ~~**PostgreSQL migration**~~ ✅ done — deployed on Coolify-managed PostgreSQL
 2. **User management UI** — add/remove users without Django admin
-3. **Password reset flow**
+3. **django-allauth + MFA + Carpenter role** — see Authentication / Security / Carpenter Entry sections above
 4. **Overhead allocation** — % overhead on direct costs
 5. **Audit trail** — who changed what and when
 6. **Supplier additional fields** — address, email, payment terms, lead time

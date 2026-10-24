@@ -1,5 +1,6 @@
-<!-- templates/accounts/login.html -->
+<!-- templates/account/login.html — overrides django-allauth's account_login view -->
 <!DOCTYPE html>
+{% load socialaccount %}
 <html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
@@ -65,13 +66,22 @@
             color: #F5F6F8;
         }
 
-        .form-control {
+        .login-card form input[type="text"],
+        .login-card form input[type="password"],
+        .login-card form input[type="email"] {
             border-radius: 8px;
             font-size: 0.9rem;
             padding: 10px 14px;
+            width: 100%;
+            background: #0A0C10;
+            border: 1px solid #232833;
+            color: #F5F6F8;
         }
 
-        .form-control:focus {
+        .login-card form input[type="text"]:focus,
+        .login-card form input[type="password"]:focus,
+        .login-card form input[type="email"]:focus {
+            outline: none;
             border-color: #2F7DFF;
             box-shadow: 0 0 0 3px rgba(47,125,255,0.15);
         }
@@ -91,10 +101,43 @@
 
         .btn-login:hover { background: #1E6AE6; color: #F5F6F8; }
 
-        .alert {
+        .btn-google {
+            background: transparent;
+            border: 1px solid #232833;
+            border-radius: 8px;
+            width: 100%;
+            padding: 11px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            color: #F5F6F8;
+            margin-top: 12px;
+            display: block;
+            text-align: center;
+            text-decoration: none;
+        }
+
+        .btn-google:hover { background: #1A1E27; color: #F5F6F8; }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: #7C8494;
+            font-size: 0.75rem;
+            margin: 20px 0 4px;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #232833;
+        }
+        .divider span { padding: 0 10px; }
+
+        .alert, .errorlist {
             border-radius: 8px;
             font-size: 0.85rem;
         }
+        .errorlist { list-style: none; padding: 0; margin: 0 0 12px; color: #E5484D; }
     </style>
 </head>
 <body>
@@ -102,7 +145,6 @@
 <div class="login-wrapper">
     <div class="login-card">
 
-        <!-- Logo -->
         <div class="login-logo">
             <i class="bi bi-box-seam"></i>
         </div>
@@ -110,51 +152,55 @@
         <h4>BOM Costing System</h4>
         <p class="subtitle">Sign in to your account to continue</p>
 
-        <!-- Error messages -->
         {% if messages %}
             {% for message in messages %}
-            <div class="alert alert-danger">
+            <div class="alert alert-{{ message.tags|default:'danger' }}">
                 <i class="bi bi-exclamation-circle me-2"></i>{{ message }}
             </div>
             {% endfor %}
         {% endif %}
 
-        <!-- Login Form -->
-        <form method="POST" action="{% url 'accounts:login' %}">
+        {% if form.non_field_errors %}
+            <ul class="errorlist">
+                {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+        {% endif %}
+
+        <form method="POST" action="{% url 'account_login' %}">
             {% csrf_token %}
 
             <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
-                <input
-                    type="text"
-                    class="form-control"
-                    id="username"
-                    name="username"
-                    placeholder="Enter your username"
-                    required
-                    autofocus
-                >
+                <label for="{{ form.login.id_for_label }}" class="form-label">Username</label>
+                {{ form.login }}
+                {% for error in form.login.errors %}
+                    <div class="text-danger small mt-1">{{ error }}</div>
+                {% endfor %}
             </div>
 
             <div class="mb-4">
-                <label for="password" class="form-label">Password</label>
-                <input
-                    type="password"
-                    class="form-control"
-                    id="password"
-                    name="password"
-                    placeholder="Enter your password"
-                    required
-                >
+                <label for="{{ form.password.id_for_label }}" class="form-label">Password</label>
+                {{ form.password }}
+                {% for error in form.password.errors %}
+                    <div class="text-danger small mt-1">{{ error }}</div>
+                {% endfor %}
             </div>
+
+            {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+            {% endif %}
 
             <button type="submit" class="btn btn-login">
                 <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
             </button>
         </form>
 
+        <div class="divider"><span>Admins only</span></div>
+        <a href="{% provider_login_url 'google' process='login' %}" class="btn-google">
+            <i class="bi bi-google me-2"></i>Sign in with Google
+        </a>
+
     </div>
-<p class="text-center mt-3" style="font-size:0.78rem;color:#7C8494;">
+    <p class="text-center mt-3" style="font-size:0.78rem;color:#7C8494;">
         BOM Costing System &copy; {% now "Y" %}
     </p>
 </div>

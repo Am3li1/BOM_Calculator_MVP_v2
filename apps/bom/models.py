@@ -23,11 +23,31 @@ class Part(models.Model):
     """
     name = models.CharField(max_length=200, unique=True)
 
+    # Tamil display layer — `name` stays the English canonical value.
+    # See apps.core.search.search_by_name.
+    name_ta = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        help_text="Tamil display name (optional)."
+    )
+    aliases = models.TextField(
+        blank=True,
+        default='',
+        help_text="Other names this part is known by, English or Tamil — one per line."
+    )
+
     class Meta:
         ordering = ['name']
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        from apps.core.search import normalize_text, normalize_multiline
+        self.name_ta = normalize_text(self.name_ta)
+        self.aliases = normalize_multiline(self.aliases)
+        super().save(*args, **kwargs)
 
 class BOMItem(models.Model):
     """

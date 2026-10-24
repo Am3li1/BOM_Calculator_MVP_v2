@@ -171,3 +171,99 @@ class ValidateWoodUnitTests(TestCase):
         errors = self.validate_wood(path)
         os.remove(path)
         self.assertTrue(any('Breath Unit' in e['message'] for e in errors))
+
+
+class ResourceTamilColumnsImportTests(TestCase):
+    """
+    The Resource sheet accepts OPTIONAL 'Tamil Name' / 'Aliases' columns.
+    Workbooks without them must import exactly as before, and a blank
+    cell must never wipe an existing Tamil value.
+    """
+
+    def setUp(self):
+        self.paths = []
+
+    def tearDown(self):
+        for path in self.paths:
+            os.remove(path)
+
+    def _write_resource_sheet(self, data):
+        fd, path = tempfile.mkstemp(suffix='.xlsx')
+        os.close(fd)
+        with pd.ExcelWriter(path, engine='openpyxl') as writer:
+            pd.DataFrame(data).to_excel(writer, sheet_name='Resource', index=False)
+        self.paths.append(path)
+        return path
+
+    def _import(self, data):
+        from .services import validate_resources, import_resources
+        path = self._write_resource_sheet(data)
+        self.assertEqual(validate_resources(path), [])
+        return import_resources(path)
+
+    def test_workbook_without_new_columns_imports_unchanged(self):
+        existing = Resource.objects.create(
+            resource_name='Teak Wood', category='Carpentry Materials',
+            unit='cft', rate=Decimal('900'),
+            name_ta='தேக்கு மரம்', aliases='Teak\nதேக்கு',
+        )
+        result = self._import({
+            'Resource': ['Teak Wood', 'Fevicol'],
+            'Category': ['Carpentry Materials', 'Hardware'],
+            'Units':    ['cft', 'kg'],
+            'Rate':     [1000, 250],
+        })
+
+        self.assertEqual(result['imported'], 1)
+        self.assertEqual(result['updated'], 1)
+        existing.refresh_from_db()
+        self.assertEqual(existing.rate, Decimal('1000'))
+        self.assertEqual(existing.name_ta, 'தேக்கு மரம்')
+        self.assertEqual(existing.aliases, 'Teak\nதேக்கு')
+        new = Resource.objects.get(resource_name='Fevicol')
+        self.assertEqual((new.name_ta, new.aliases), ('', ''))
+
+    def test_tamil_columns_are_imported(self):
+        self._import({
+            'Resource':   ['Teak Wood'],
+            'Category':   ['Carpentry Materials'],
+            'Units':      ['cft'],
+            'Rate':       [1000],
+            'Tamil Name': ['தேக்கு மரம்'],
+            'Aliases':    ['Teak\nதேக்கு'],
+        })
+        teak = Resource.objects.get(resource_name='Teak Wood')
+        self.assertEqual(teak.name_ta, 'தேக்கு மரம்')
+        self.assertEqual(teak.aliases, 'Teak\nதேக்கு')
+
+    def test_tamil_columns_update_existing_resource(self):
+        Resource.objects.create(
+            resource_name='Teak Wood', category='Carpentry Materials',
+            unit='cft', rate=Decimal('900'), name_ta='பழைய',
+        )
+        self._import({
+            'Resource':   ['Teak Wood'],
+            'Category':   ['Carpentry Materials'],
+            'Units':      ['cft'],
+            'Rate':       [1000],
+            'Tamil Name': ['தேக்கு'],
+        })
+        self.assertEqual(Resource.objects.get(resource_name='Teak Wood').name_ta, 'தேக்கு')
+
+    def test_blank_tamil_cell_keeps_existing_value(self):
+        Resource.objects.create(
+            resource_name='Teak Wood', category='Carpentry Materials',
+            unit='cft', rate=Decimal('900'), name_ta='தேக்கு', aliases='Teak',
+        )
+        self._import({
+            'Resource':   ['Teak Wood', 'Fevicol'],
+            'Category':   ['Carpentry Materials', 'Hardware'],
+            'Units':      ['cft', 'kg'],
+            'Rate':       [1000, 250],
+            'Tamil Name': [None, 'ஃபெவிகால்'],
+            'Aliases':    [None, None],
+        })
+        teak = Resource.objects.get(resource_name='Teak Wood')
+        self.assertEqual(teak.name_ta, 'தேக்கு')
+        self.assertEqual(teak.aliases, 'Teak')
+        self.assertEqual(Resource.objects.get(resource_name='Fevicol').name_ta, 'ஃபெவிகால்')

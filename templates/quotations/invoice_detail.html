@@ -1,0 +1,137 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center page-header-row mb-3">
+    <div>
+        <h5 class="mb-0">{{ invoice.invoice_number }}</h5>
+        <small class="text-muted">{{ invoice.customer.name }} — {{ invoice.invoice_date|date:"d M Y" }}</small>
+        <span class="badge ms-2
+            {% if invoice.status == 'finalized' %}bg-success-subtle text-success
+            {% elif invoice.status == 'cancelled' %}bg-danger-subtle text-danger
+            {% else %}bg-secondary-subtle text-secondary{% endif %}">
+            {{ invoice.get_status_display }}
+        </span>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'quotations:invoice_pdf' invoice.pk %}" target="_blank"
+           class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-file-earmark-pdf me-1"></i> View PDF
+        </a>
+        {% if invoice.status == 'draft' and user.is_staff %}
+        <a href="{% url 'quotations:invoice_edit' invoice.pk %}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i> Edit
+        </a>
+        <form method="post" action="{% url 'quotations:invoice_finalize' invoice.pk %}" class="d-inline"
+              onsubmit="return confirm('Finalize this invoice? This cannot be undone — it will be locked permanently.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-lock me-1"></i> Finalize</button>
+        </form>
+        <form method="post" action="{% url 'quotations:invoice_delete' invoice.pk %}" class="d-inline"
+              onsubmit="return confirm('Delete this draft invoice? This cannot be undone.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash me-1"></i> Delete</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="small text-muted mb-3">
+    Generated from quotation
+    <a href="{% url 'quotations:quotation_detail' invoice.quotation.pk %}">{{ invoice.quotation.quotation_number }}</a>
+</div>
+
+<div class="content-card mb-3">
+    <div class="p-3 small d-flex justify-content-between">
+        <div>
+            <div class="fw-bold fs-5">{{ company.company_name }}</div>
+            <div>State: {{ company.company_state }}</div>
+        </div>
+        {% if company.company_gstin %}
+        <div class="text-end font-mono">GSTIN: {{ company.company_gstin }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Customer</div>
+    <div class="p-3 small">
+        <div>{{ invoice.customer.name }}</div>
+        {% if invoice.customer.address %}<div>{{ invoice.customer.address }}</div>{% endif %}
+        <div>State: {{ invoice.customer.state }}</div>
+        <div class="font-mono">GSTIN: {{ invoice.customer.gst_number }}</div>
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Billing &amp; Shipping</div>
+    <div class="p-3 small row">
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Delivered From</div>
+            <div>{{ company.company_address|linebreaksbr }}</div>
+            <div>State: {{ company.company_state }}</div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Billing Address</div>
+            <div>{{ invoice.billing_address|default:"—"|linebreaksbr }}</div>
+            <div>State: {{ invoice.billing_state|default:"—" }}</div>
+        </div>
+        <div class="col-md-4">
+            <div class="text-muted mb-1">Shipping Address</div>
+            <div>{{ invoice.shipping_address|default:"—"|linebreaksbr }}</div>
+            <div>State: {{ invoice.shipping_state|default:"—" }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header">Line Items</div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>HSN</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Unit Price</th>
+                    <th class="text-end">Net Amount</th>
+                    <th>Tax Type</th>
+                    <th class="text-end">Tax Amount</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.items.all %}
+                <tr>
+                    <td>{{ item.product.product_name }}</td>
+                    <td class="font-mono">{{ item.hsn_code|default:"—" }}</td>
+                    <td class="text-end">{{ item.quantity }}</td>
+                    <td class="text-end font-mono">{{ item.marked_up_price|floatformat:2 }}</td>
+                    <td class="text-end font-mono">{{ item.line_subtotal|floatformat:2 }}</td>
+                    <td>
+                        {% if item.tax_type == 'CGST_SGST' %}CGST {{ item.gst_rate|floatformat:1 }}% + SGST{% else %}IGST {{ item.gst_rate }}%{% endif %}
+                    </td>
+                    <td class="text-end font-mono">
+                        {% if item.tax_type == 'CGST_SGST' %}
+                            {{ item.cgst_amount|add:item.sgst_amount|floatformat:2 }}
+                        {% else %}
+                            {{ item.igst_amount|floatformat:2 }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end font-mono">{{ item.line_total|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="content-card mb-3" style="max-width:400px;margin-left:auto;">
+    <div class="p-3">
+        <div class="d-flex justify-content-between fw-bold">
+            <span>Grand Total</span>
+            <span class="font-mono">₹{{ invoice.grand_total|floatformat:2 }}</span>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

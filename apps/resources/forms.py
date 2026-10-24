@@ -8,6 +8,8 @@ class ResourceForm(forms.ModelForm):
         model = Resource
         fields = [
             'resource_name',
+            'name_ta',
+            'aliases',
             'category',
             'material_type',
             'unit',
@@ -20,6 +22,16 @@ class ResourceForm(forms.ModelForm):
             'resource_name': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'e.g. Teak Wood, Carpenter',
+            }),
+            'name_ta': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'e.g. தேக்கு மரம்',
+                'lang': 'ta',
+            }),
+            'aliases': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'One per line, e.g. Teak\nதேக்கு',
             }),
             'material_type': forms.Select(attrs={
                 'class': 'form-select',
@@ -46,6 +58,8 @@ class ResourceForm(forms.ModelForm):
         }
         labels = {
             'resource_name':        'Resource Name',
+            'name_ta':              'Tamil Name',
+            'aliases':              'Aliases',
             'category':             'Category',
             'material_type':        'Material Type',
             'unit':                 'Unit of Measurement',
@@ -55,6 +69,14 @@ class ResourceForm(forms.ModelForm):
             'override_reason':      'Override Reason',
         }
         help_texts = {
+            'name_ta': (
+                'Optional. Shown to Tamil-language users; the English '
+                'name above stays the canonical name everywhere.'
+            ),
+            'aliases': (
+                'Optional. Other names this is known by on the shop '
+                'floor (English or Tamil), one per line — used for search.'
+            ),
             'material_type': (
                 'Drives WoodPart dimension formulas (CFT vs SFT) and '
                 'auto-suggests a Unit below. Only set this for '

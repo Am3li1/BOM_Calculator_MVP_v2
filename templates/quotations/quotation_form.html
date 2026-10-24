@@ -18,7 +18,8 @@
                     <select name="customer" id="customer-select" class="form-select" required>
                         <option value="">Select a customer...</option>
                         {% for c in customers %}
-                        <option value="{{ c.pk }}" data-state="{{ c.state }}" {% if quotation and quotation.customer_id == c.pk %}selected{% endif %}>
+                        <option value="{{ c.pk }}" data-state="{{ c.state }}" data-address="{{ c.address }}"
+                            {% if quotation and quotation.customer_id == c.pk %}selected{% endif %}>
                             {{ c.name }} ({{ c.state }})
                         </option>
                         {% endfor %}
@@ -32,6 +33,43 @@
                 </div>
                 <div class="col-md-4 text-md-end">
                     <span class="small text-muted">Company state: <strong>{{ company_state }}</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Billing & Shipping ───────────────────────────────────────── -->
+    <div class="content-card mb-3">
+        <div class="card-header">Billing &amp; Shipping</div>
+        <div class="p-3">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label small text-muted">Billing Address</label>
+                    <textarea name="billing_address" id="billing_address" class="form-control" rows="3">{% if quotation %}{{ quotation.billing_address }}{% endif %}</textarea>
+                    <label class="form-label small text-muted mt-2">Billing State</label>
+                    <select name="billing_state" id="billing_state" class="form-select">
+                        <option value="">Select state...</option>
+                        {% for s in india_states %}
+                        <option value="{{ s }}" {% if quotation and quotation.billing_state == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <label class="form-label small text-muted mb-0">Shipping Address</label>
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="same-as-billing">
+                            <label class="form-check-label small" for="same-as-billing">Same as billing</label>
+                        </div>
+                    </div>
+                    <textarea name="shipping_address" id="shipping_address" class="form-control" rows="3">{% if quotation %}{{ quotation.shipping_address }}{% endif %}</textarea>
+                    <label class="form-label small text-muted mt-2">Shipping State</label>
+                    <select name="shipping_state" id="shipping_state" class="form-select">
+                        <option value="">Select state...</option>
+                        {% for s in india_states %}
+                        <option value="{{ s }}" {% if quotation and quotation.shipping_state == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
             </div>
         </div>
@@ -159,11 +197,39 @@
     const totalFormsInput = document.querySelector('input[name="items-TOTAL_FORMS"]');
     const template = document.getElementById('empty-row-template');
     const customerSelect = document.getElementById('customer-select');
+    const billingAddress = document.getElementById('billing_address');
+    const billingState = document.getElementById('billing_state');
+    const shippingAddress = document.getElementById('shipping_address');
+    const shippingState = document.getElementById('shipping_state');
+    const sameAsBilling = document.getElementById('same-as-billing');
 
     function getCustomerState() {
         const opt = customerSelect.options[customerSelect.selectedIndex];
         return opt ? (opt.dataset.state || '') : '';
     }
+
+    customerSelect.addEventListener('change', function () {
+        const opt = customerSelect.options[customerSelect.selectedIndex];
+        if (!opt || !opt.value) return;
+        // Only prefill if the field is currently empty — never overwrite a
+        // value the user already typed/edited.
+        if (!billingAddress.value) billingAddress.value = opt.dataset.address || '';
+        if (!billingState.value) billingState.value = opt.dataset.state || '';
+        if (sameAsBilling.checked) syncShippingToBilling();
+    });
+
+    function syncShippingToBilling() {
+        shippingAddress.value = billingAddress.value;
+        shippingState.value = billingState.value;
+    }
+
+    sameAsBilling.addEventListener('change', function () {
+        if (this.checked) syncShippingToBilling();
+    });
+
+    [billingAddress, billingState].forEach(el => {
+        el.addEventListener('input', () => { if (sameAsBilling.checked) syncShippingToBilling(); });
+    });
 
     // ── Add a new blank line by cloning the template row ────────────
     addLineBtn.addEventListener('click', function () {

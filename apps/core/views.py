@@ -2,6 +2,7 @@
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from apps.core.decorators import not_carpenter
 from apps.products.models import Product
 from apps.resources.models import Resource
 from apps.bom.models import BOMItem, WoodPart
@@ -9,6 +10,7 @@ from apps.suppliers.models import Supplier
 
 
 @login_required
+@not_carpenter
 def dashboard(request):
     """
     Main dashboard view.

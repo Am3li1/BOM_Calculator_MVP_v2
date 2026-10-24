@@ -72,3 +72,76 @@ class SafeEvalTests(TestCase):
     def test_empty_formula_raises(self):
         with self.assertRaises(self.FormulaError):
             self.evaluate_formula('   ', self.vars)
+
+
+class SearchByNameTests(TestCase):
+    """apps.core.search.search_by_name — English name, name_ta and aliases."""
+
+    def setUp(self):
+        from apps.resources.models import Resource
+        from apps.bom.models import Part
+
+        self.Resource = Resource
+        self.Part = Part
+        self.teak = Resource.objects.create(
+            resource_name='Teak Wood', category='Carpentry Materials',
+            unit='cft', rate=Decimal('1000'),
+            name_ta='தேக்கு மரம்', aliases='Burma Teak\nசாகுவான்',
+        )
+        self.ply = Resource.objects.create(
+            resource_name='Plywood 6mm', category='Carpentry Materials',
+            unit='sqft', rate=Decimal('80'),
+            name_ta='ஒட்டு பலகை',
+        )
+        self.leg = Part.objects.create(name='Leg 1', name_ta='கால் 1', aliases='Front leg')
+        Part.objects.create(name='Table Top', name_ta='மேசை மேல்பகுதி')
+
+    def _search(self, query, model=None, field='resource_name'):
+        from apps.core.search import search_by_name
+        model = model or self.Resource
+        return list(search_by_name(model.objects.all(), query, field))
+
+    def test_english_name_is_case_insensitive(self):
+        self.assertEqual(self._search('teak'), [self.teak])
+        self.assertEqual(self._search('TEAK WOOD'), [self.teak])
+
+    def test_tamil_name_exact_and_substring(self):
+        self.assertEqual(self._search('தேக்கு மரம்'), [self.teak])
+        self.assertEqual(self._search('தேக்கு'), [self.teak])
+        self.assertEqual(self._search('பலகை'), [self.ply])
+
+    def test_alias_match_english_and_tamil(self):
+        self.assertEqual(self._search('burma'), [self.teak])
+        self.assertEqual(self._search('சாகுவான்'), [self.teak])
+
+    def test_decomposed_tamil_query_matches_composed_value(self):
+        import unicodedata
+        # The vowel sign in கொ (U+0BCA) decomposes under NFD into
+        # U+0BC6 + U+0BBE — visually identical, different code points.
+        word = 'கொட்டை'
+        nfd = unicodedata.normalize('NFD', word)
+        self.assertNotEqual(nfd, unicodedata.normalize('NFC', word))
+
+        nut = self.Resource.objects.create(
+            resource_name='Nut', category='Hardware', unit='nos',
+            rate=Decimal('2'), name_ta=nfd,
+        )
+        nut.refresh_from_db()
+        self.assertEqual(nut.name_ta, unicodedata.normalize('NFC', word))
+        self.assertEqual(self._search(nfd), [nut])
+
+    def test_query_whitespace_is_trimmed(self):
+        self.assertEqual(self._search('  teak   wood '), [self.teak])
+
+    def test_empty_query_returns_everything(self):
+        self.assertEqual(len(self._search('')), 2)
+        self.assertEqual(len(self._search(None)), 2)
+
+    def test_no_match_returns_nothing(self):
+        self.assertEqual(self._search('steel'), [])
+        self.assertEqual(self._search('இரும்பு'), [])
+
+    def test_works_on_part(self):
+        self.assertEqual(self._search('கால்', self.Part, 'name'), [self.leg])
+        self.assertEqual(self._search('front', self.Part, 'name'), [self.leg])
+        self.assertEqual(self._search('leg 1', self.Part, 'name'), [self.leg])

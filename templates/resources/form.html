@@ -39,6 +39,42 @@
                         {% endif %}
                     </div>
 
+                    <!-- Tamil Name + Aliases (display/search only) -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
+                                {{ form.name_ta.label }}
+                            </label>
+                            {{ form.name_ta }}
+                            {% if form.name_ta.errors %}
+                            <div class="text-danger mt-1"
+                                 style="font-size:0.8rem;">
+                                {{ form.name_ta.errors.0 }}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">
+                                {{ form.name_ta.help_text }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold"
+                                   style="font-size:0.875rem;">
+                                {{ form.aliases.label }}
+                            </label>
+                            {{ form.aliases }}
+                            {% if form.aliases.errors %}
+                            <div class="text-danger mt-1"
+                                 style="font-size:0.8rem;">
+                                {{ form.aliases.errors.0 }}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">
+                                {{ form.aliases.help_text }}
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Category + Material Type -->
                     <div class="row g-3 mb-3">
                         <div class="col-md-6">

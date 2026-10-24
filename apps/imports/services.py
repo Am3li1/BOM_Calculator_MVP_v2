@@ -606,6 +606,12 @@ def import_resources(path):
         'Rate':     'rate',
     })
 
+    # Optional Tamil display columns. Workbooks without them import
+    # exactly as before, and a blank cell never wipes an existing value
+    # — only a non-blank cell overwrites name_ta / aliases.
+    has_tamil   = 'Tamil Name' in df.columns
+    has_aliases = 'Aliases' in df.columns
+
     for _, row in df.iterrows():
         name     = _normalize(row['resource_name'])
         category = _normalize(row['category'])
@@ -619,10 +625,17 @@ def import_resources(path):
         except Exception:
             continue
 
+        display_fields = {}
+        if has_tamil and _normalize(row['Tamil Name']):
+            display_fields['name_ta'] = _normalize(row['Tamil Name'])
+        if has_aliases and not pd.isna(row['Aliases']) and str(row['Aliases']).strip():
+            # Not _normalize(): that would flatten one-alias-per-line.
+            display_fields['aliases'] = str(row['Aliases'])
+
         resource, created = Resource.objects.get_or_create(
             resource_name=name,
             category=category,
-            defaults={'unit': unit, 'rate': rate, 'active': True}
+            defaults={'unit': unit, 'rate': rate, 'active': True, **display_fields}
         )
         if created:
             result['imported'] += 1
@@ -630,6 +643,8 @@ def import_resources(path):
             resource.unit   = unit
             resource.rate   = rate
             resource.active = True
+            for field, value in display_fields.items():
+                setattr(resource, field, value)
             resource.save()
             result['updated'] += 1
 

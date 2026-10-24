@@ -319,6 +319,16 @@
 
     <ul class="nav flex-column mt-2 pb-5">
 
+        {% if is_carpenter %}
+        {# Carpenters only get their own area — every other page 403s for them. #}
+        <li><span class="nav-label">Main</span></li>
+        <li class="nav-item">
+            <a href="{% url 'carpenter:home' %}"
+               class="nav-link {% if request.resolver_match.app_name == 'carpenter' %}active{% endif %}">
+                <i class="bi bi-hammer"></i> Home
+            </a>
+        </li>
+        {% else %}
         <li><span class="nav-label">Main</span></li>
         <li class="nav-item">
             <a href="{% url 'core:dashboard' %}"
@@ -383,10 +393,22 @@
             </a>
         </li>
         <li class="nav-item">
-            <a href="/admin/" class="nav-link" target="_blank">
+            <a href="{% url 'mfa_index' %}" class="nav-link">
+                <i class="bi bi-shield-lock"></i> Two-Factor Auth
+            </a>
+        </li>
+        <li class="nav-item">
+            <a href="{% url 'admin:index' %}" class="nav-link" target="_blank">
                 <i class="bi bi-gear"></i> Django Admin
             </a>
         </li>
+        <li class="nav-item">
+            <a href="{% url 'carpenter:home' %}"
+               class="nav-link {% if request.resolver_match.app_name == 'carpenter' %}active{% endif %}">
+                <i class="bi bi-hammer"></i> Carpenter View
+            </a>
+        </li>
+        {% endif %}
         {% endif %}
 
     </ul>
@@ -408,10 +430,10 @@
                     {{ user.username }}
                 </div>
                 <div style="color:rgba(255,255,255,0.4);font-size:0.7rem;">
-                    {% if user.is_staff %}Administrator{% else %}User{% endif %}
+                    {% if user_role == 'admin' %}Administrator{% elif user_role == 'carpenter' %}Carpenter{% else %}Viewer{% endif %}
                 </div>
             </div>
-            <a href="{% url 'accounts:logout' %}"
+            <a href="{% url 'account_logout' %}"
                style="color:rgba(255,255,255,0.4);" title="Logout">
                 <i class="bi bi-box-arrow-right"></i>
             </a>

@@ -38,6 +38,8 @@
                         <span class="badge bg-danger-subtle text-danger">Superuser</span>
                     {% elif u.is_staff %}
                         <span class="badge bg-warning-subtle text-warning">Admin</span>
+                    {% elif u.profile.role == 'carpenter' %}
+                        <span class="badge bg-info-subtle text-info">Carpenter</span>
                     {% else %}
                         <span class="badge bg-secondary-subtle text-secondary">Viewer</span>
                     {% endif %}

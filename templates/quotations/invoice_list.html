@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center page-header-row mb-3">
+    <h5 class="mb-0">Invoices</h5>
+</div>
+
+<div class="content-card mb-3">
+    <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+        <form method="get" class="d-flex flex-wrap gap-2 flex-grow-1">
+            <input type="text" name="search" value="{{ search }}"
+                   class="form-control form-control-sm" style="max-width:240px;"
+                   placeholder="Search by number or customer...">
+            <select name="status" class="form-select form-select-sm" style="max-width:160px;">
+                <option value="">All statuses</option>
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Customer</th>
+                    <th>Status</th>
+                    <th class="text-end">Grand Total (₹)</th>
+                    <th>Invoice Date</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in page_obj %}
+                <tr>
+                    <td class="font-mono">{{ inv.invoice_number }}</td>
+                    <td>{{ inv.customer.name }}</td>
+                    <td>
+                        <span class="badge
+                            {% if inv.status == 'finalized' %}bg-success-subtle text-success
+                            {% elif inv.status == 'cancelled' %}bg-danger-subtle text-danger
+                            {% else %}bg-secondary-subtle text-secondary{% endif %}">
+                            {{ inv.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="text-end font-mono">{{ inv.grand_total|floatformat:2 }}</td>
+                    <td>{{ inv.invoice_date|date:"d M Y" }}</td>
+                    <td class="text-end">
+                        <a href="{% url 'quotations:invoice_detail' inv.pk %}"
+                           class="btn btn-sm btn-outline-secondary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        {% if inv.status == 'draft' and user.is_staff %}
+                        <a href="{% url 'quotations:invoice_edit' inv.pk %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <form method="post" action="{% url 'quotations:invoice_delete' inv.pk %}" class="d-inline"
+                              onsubmit="return confirm('Delete this draft invoice? This cannot be undone.');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No invoices yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    {% include 'partials/pagination.html' %}
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -73,3 +73,15 @@ def generate_quotation_number():
     prefix = f"QTN-{year}-"
     count = Quotation.objects.filter(quotation_number__startswith=prefix).count()
     return f"{prefix}{count + 1:04d}"
+
+def generate_invoice_number():
+    """
+    INV-{year}-{sequence}, own counter — independent of quotation_number.
+    Called inside transaction.atomic() to avoid a count/save race, same as
+    generate_quotation_number.
+    """
+    from .models import Invoice
+    year = date.today().year
+    prefix = f"INV-{year}-"
+    count = Invoice.objects.filter(invoice_number__startswith=prefix).count()
+    return f"{prefix}{count + 1:04d}"
