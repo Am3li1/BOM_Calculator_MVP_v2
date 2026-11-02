@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="content-card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>
+            <i class="bi bi-hammer me-2 text-warning"></i>
+            Carpenter Submissions
+            {% if product %}— <code>{{ product.product_code }}</code>{% endif %}
+        </span>
+        <form method="get" class="d-flex gap-2">
+            {% if product %}<input type="hidden" name="product" value="{{ product.pk }}">{% endif %}
+            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">All statuses</option>
+                {% for code, label in status_choices %}
+                <option value="{{ code }}"{% if code == status %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if submissions %}
+    <div class="table-responsive">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th class="ps-4">Product</th>
+                <th>Carpenter</th>
+                <th>Status</th>
+                <th>Sent</th>
+                <th>Submitted</th>
+                <th class="text-end pe-4"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in submissions %}
+            <tr>
+                <td class="ps-4">
+                    <div class="fw-semibold">{{ s.product.product_code }}</div>
+                    <div class="text-muted" style="font-size:0.8rem;">{{ s.product.product_name }}</div>
+                </td>
+                <td>{{ s.carpenter_name|default:"—" }}</td>
+                <td>
+                    {% if s.status == 'pending' %}
+                    <span class="badge bg-warning text-dark">{{ s.get_status_display }}</span>
+                    {% elif s.status == 'approved' %}
+                    <span class="badge bg-success">{{ s.get_status_display }}</span>
+                    {% elif s.status == 'open' and s.is_expired %}
+                    <span class="badge bg-secondary">Expired</span>
+                    {% elif s.status == 'open' %}
+                    <span class="badge bg-info text-dark">{{ s.get_status_display }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ s.get_status_display }}</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:0.85rem;">{{ s.created_at|date:"d M Y" }}</td>
+                <td style="font-size:0.85rem;">{{ s.submitted_at|date:"d M Y, H:i"|default:"—" }}</td>
+                <td class="text-end pe-4">
+                    <a href="{% url 'bom:submission_detail' pk=s.pk %}" class="btn btn-sm btn-outline-primary">
+                        {% if s.status == 'pending' %}Review{% else %}View{% endif %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% include "partials/pagination.html" %}
+    {% else %}
+    <div class="text-center py-5">
+        <i class="bi bi-hammer text-muted" style="font-size:2.5rem; opacity:0.4;"></i>
+        <p class="text-muted mt-2 mb-0" style="font-size:0.875rem;">
+            No carpenter submissions yet. Open a product's BOM and use
+            <strong>Request from carpenter</strong> to send a link.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

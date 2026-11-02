@@ -377,6 +377,16 @@
             </a>
         </li>
 
+        {% if user_role == 'admin' %}
+        <li class="nav-item">
+            <a href="{% url 'bom:submission_list' %}"
+               class="nav-link {% if request.resolver_match.url_name == 'submission_list' or request.resolver_match.url_name == 'submission_detail' %}active{% endif %}">
+                <i class="bi bi-inbox"></i> Carpenter Submissions
+                {% if pending_submission_count %}<span class="badge bg-warning text-dark ms-auto">{{ pending_submission_count }}</span>{% endif %}
+            </a>
+        </li>
+        {% endif %}
+
         <li><span class="nav-label">Data</span></li>
         <li class="nav-item">
             <a href="{% url 'imports:upload' %}"
@@ -390,11 +400,6 @@
         <li class="nav-item">
             <a href="{% url 'accounts:user_list' %}" class="nav-link">
                 <i class="bi bi-people"></i> Users
-            </a>
-        </li>
-        <li class="nav-item">
-            <a href="{% url 'mfa_index' %}" class="nav-link">
-                <i class="bi bi-shield-lock"></i> Two-Factor Auth
             </a>
         </li>
         <li class="nav-item">

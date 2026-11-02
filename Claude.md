@@ -162,6 +162,8 @@ def product_create(request): ...
 def product_create(request): ...
 ```
 
+**Only exception:** `carpenter:link_form` (public magic-link form, no login — see Carpenter Entry).
+
 `apps/accounts/tests.py: CarpenterLockoutTests` walks the URL resolver and fails if any URL in the pre-existing app namespaces doesn't return 403 to a carpenter (GET and POST). When adding a **new app** that carpenters must not see, add its namespace to `BLOCKED_NAMESPACES` there. Carpenter-area views use `@carpenter_required` (carpenter + admin) instead.
 
 ### Setting roles
@@ -271,7 +273,7 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 
 ## Testing
 
-- **Run:** `python manage.py test apps.accounts.tests apps.core.tests apps.imports.tests apps.bom.tests apps.products.tests apps.resources.tests apps.suppliers.tests apps.costing.tests` (full dotted paths on Windows)
+- **Run:** `python manage.py test apps.accounts.tests apps.core.tests apps.imports.tests apps.bom.tests apps.products.tests apps.resources.tests apps.suppliers.tests apps.costing.tests apps.carpenter.tests` (full dotted paths on Windows)
 - Security-critical: `apps.accounts.tests.CarpenterLockoutTests` — every pre-existing URL returns 403 to a carpenter. Never weaken or skip it.
 - Known stale tests (6, pre-date the Carpenter work): `products.ProductListPaginationTests` ×2, `suppliers.SupplierViewsTests` ×2 log in as non-staff against now admin-only views; `resources.ResourceFormFormulaExpressionTests` ×2 test a removed formula field.
 - Add tests alongside new features, especially cost calculation changes.
@@ -297,7 +299,7 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 - **Access model:** App is publicly reachable over HTTPS. There is no network-level access control — **authentication is the only access control** (see Security section below).
 - **URL:** `https://bom.lumelabs.dev` (primary, Coolify-managed Let's Encrypt cert)
 - **Default superuser:** created manually via `docker exec ... python manage.py createsuperuser` — change credentials as needed.
-- **Env vars required (set in Coolify UI):** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (points to internal Docker network container name, not host IP)
+- **Env vars required (set in Coolify UI):** `SECRET_KEY`, `DEBUG=False`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `DATABASE_URL` (points to internal Docker network container name, not host IP). Optional: `BOM_ASSISTANT_API_KEY` (enables the BOM voice assistant), `BOM_ASSISTANT_BASE_URL`, `BOM_ASSISTANT_MODEL`.
 - **Timezone:** `Asia/Kolkata` (IST)
 - **User roles:** Set via the Authentication section below (Admin / Viewer / Carpenter).
 
@@ -308,7 +310,7 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 The app is **public-internet-facing** (no VPN/tailnet/IP allowlist in front of it). Authentication is therefore the only access control, and it must be treated as security-critical, not incidental.
 
 Rules:
-1. **MFA required for Admin accounts.** Admins can see all costs/rates and mutate all data — compromise here is the highest-impact scenario.
+1. **No MFA (removed by owner decision, Nov 2026).** Login is username + password (or Google sign-in for allow-listed admins). Admins can see all costs/rates and mutate all data, so admin passwords must be strong and unique; the lockout below is the main brute-force defence.
 2. **Account lockout on repeated failed logins** (django-allauth / django-axes style rate limiting) — mitigates credential-stuffing and brute force against a publicly reachable login page.
 3. **No rates or costs are ever visible to the Carpenter role.** Carpenter-facing views/templates/serializers must not include `resource.rate`, `effective_rate`, `BOMItem.cost`, `WoodPart` cost, or any cost-sheet data — enforced server-side, not just hidden in the template.
 4. **Every view enforces its role check server-side.** Never rely on hiding a link/button in a template as the only protection — a Carpenter or Viewer hitting a URL directly must be blocked by the view itself (decorator or explicit check), same pattern as `@admin_required` today.
@@ -346,9 +348,32 @@ Carpenters need a way to submit BOM/dimension data from the shop floor without d
 - **Tamil is a display layer only**, via `name_ta` / `aliases` fields (planned: on `Resource`, possibly `Product`/`Part`) — used to render the Carpenter-facing submission UI in Tamil and to accept Tamil input, but always resolved back to the canonical English record before storage. No parallel Tamil data model.
 
 **Implemented so far:**
-- Carpenter role + lockout (see Authentication above). `apps.carpenter` exists with only a placeholder `home` view at `/carpenter/` — `BOMSubmission` / `SubmissionLine` and entry screens are **not yet built**.
+- Carpenter role + lockout (see Authentication above). `/carpenter/` is still a placeholder landing page for logged-in carpenters.
+- **Magic-link submissions (built).** `apps.carpenter.models`: `BOMSubmission` (product, `token`, carpenter name/phone, language en/ta, `expires_at`, status `open → pending → approved | rejected`, plus `revoked`) and `SubmissionLine` (`line_type` `bom`/`dimension`, same fields as BOMItem/WoodPart, never costed).
+  - Admin: BOM page → **Request from carpenter** → `bom:submission_link_create` → detail page with Copy + WhatsApp (`wa.me`) share. Review at `bom:submission_list` / `bom:submission_detail` (current BOM qty shown per line, lines editable + tickable) → `bom:submission_approve` / `_reject` / `_revoke`. Views in `apps/bom/views_submissions.py`, so the lockout sweep covers them.
+  - Public form: `carpenter:link_form` at `/carpenter/link/<token>/` — **the one deliberate exception to `@login_required`**. The 256-bit token is the credential; the link works once, expires (default 7 days, max 30), and can be revoked. Standalone layout (`carpenter/link_base.html`), no nav. Resource picker JSON is an explicit field whitelist — **never add rate/cost fields to `_resource_options()`**.
+  - Approval writes through `apps/bom/services.py: apply_lines()` — BOM lines upsert on (product, resource) like the import; dimension lines create a WoodPart (+ `Part.get_or_create`). Rejected submissions stay as history.
 - `name_ta` (CharField, blank) and `aliases` (TextField, blank, one per line) on `Resource` and `Part`. Both are NFC-normalised on save.
 - `apps/core/search.py: search_by_name(queryset, query, name_field)` — case-insensitive match against the English name field, `name_ta` and `aliases` (query is NFC-normalised so differently-typed Tamil vowel signs still match). Use it for any carpenter-facing lookup.
+
+---
+
+## Voice Assistant (admin BOM page)
+
+- **Voice Assistant** button on `bom:list` (admins only) opens an offcanvas chat. Speech-to-text and text-to-speech are the **browser's Web Speech API** (Chrome/Edge/Android; always `en-IN`, regardless of the user's profile language). Other browsers get a text box.
+- **Voice is English only.** Recognition is fixed to `en-IN`; speech synthesis uses an en-IN/en-US voice and strips Tamil script before speaking. Tamil is display/typing only — the admin can type Tamil and search still matches `name_ta`/aliases. Replies are always English.
+- `apps/bom/assistant.py` runs a manual tool-call loop over any **OpenAI-compatible** chat-completions API (`openai` SDK, `client.chat.completions.create`, function-calling format) — default is the Gemini free tier, Groq also works. Free models are less reliable, so: every tool call's `arguments` go through `parse_arguments()` (bad JSON / missing or mistyped fields → an `error` tool result the model can correct, never a crash), the loop is capped at `MAX_TOOL_ROUNDS`, and 429 / network / 5xx errors become "The assistant is busy, try again in a moment" in the chat (HTTP 200, history rolled back). Session state carries `format: 'openai-1'`; older sessions keep their draft and restart the conversation. Tools: `search_resources` (uses `search_by_name`, never returns rates), `search_parts`, `get_current_bom`, `get_draft`, `stage_material`, `stage_dimension`, `remove_staged_row`.
+- **It never writes to the BOM.** Stage tools only add to a draft in `request.session['bom_assistant'][product_pk]`. **Save to BOM** (`bom:assistant_commit`) re-validates every row and writes through `services.apply_lines()`.
+- History is append-only and stored in OpenAI chat format (tool calls echoed back unchanged, including provider extras like Gemini thought signatures). A failed turn rolls back to the previous good state.
+- Env vars (all optional; check the provider's current model list):
+
+  | Variable | Gemini (default) | Groq |
+  |---|---|---|
+  | `BOM_ASSISTANT_API_KEY` | AI Studio key (empty → assistant hidden) | `gsk_...` |
+  | `BOM_ASSISTANT_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta/openai/` | `https://api.groq.com/openai/v1` |
+  | `BOM_ASSISTANT_MODEL` | `gemini-2.5-flash` | `llama-3.3-70b-versatile` |
+
+- Tests mock `assistant._client` and never call the API.
 
 ### Known host-level quirk
 `/data/coolify/databases/` and `/data/coolify/applications/` subdirectories are sometimes created by Coolify with owner `santosh:santosh` and no traverse permission on parent dirs (`/data/coolify`, `/data/coolify/databases`, `/data/coolify/applications` are `9999:root`, mode 700). This breaks Coolify's own file-write steps (`.env` generation, Postgres init files) with `Permission denied`. Fixed via:
@@ -378,7 +403,7 @@ Watch for this same pattern if new databases/apps are added later. Also: `santos
 
 1. ~~**PostgreSQL migration**~~ ✅ done — deployed on Coolify-managed PostgreSQL
 2. **User management UI** — add/remove users without Django admin
-3. **django-allauth + MFA + Carpenter role** — see Authentication / Security / Carpenter Entry sections above
+3. ~~**django-allauth + MFA + Carpenter role**~~ ✅ done (MFA later removed) — see Authentication / Security / Carpenter Entry sections above
 4. **Overhead allocation** — % overhead on direct costs
 5. **Audit trail** — who changed what and when
 6. **Supplier additional fields** — address, email, payment terms, lead time

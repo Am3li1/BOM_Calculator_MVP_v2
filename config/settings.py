@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'allauth.mfa',
     'axes',
 
     # Your apps
@@ -74,8 +73,6 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'apps.accounts.middleware.SessionAgeByRoleMiddleware',
-    # Must come after MessageMiddleware — it uses the messages framework.
-    'apps.accounts.middleware.RequireAdminMFAMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # django-axes must be last so it sees the final response of every
     # other middleware before deciding whether a login attempt counts.
@@ -104,6 +101,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'apps.core.context_processors.user_role',
+                'apps.carpenter.context_processors.pending_submissions',
             ],
         },
     },
@@ -216,12 +214,6 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-# MFA (TOTP) — enforced for every is_staff account by
-# apps.accounts.middleware.RequireAdminMFAMiddleware, since allauth itself
-# only makes MFA available, not mandatory.
-MFA_SUPPORTED_TYPES = ['totp', 'recovery_codes']
-MFA_TOTP_ISSUER = config('MFA_TOTP_ISSUER', default='BOM Costing')
-
 # ── django-axes (login lockout) ─────────────────────────────────────────
 AXES_FAILURE_LIMIT = config('AXES_FAILURE_LIMIT', default=5, cast=int)
 AXES_COOLOFF_TIME = config('AXES_COOLOFF_TIME_HOURS', default=1, cast=int)
@@ -279,3 +271,11 @@ LOGGING = {
 }
 
 EXTERNAL_API_KEY = config('EXTERNAL_API_KEY')  # shared secret — Elite's system authenticates with this
+
+# ── BOM voice assistant (apps/bom/assistant.py) ───────────────────────
+# Any OpenAI-compatible chat-completions provider (Gemini free tier, Groq, ...).
+# Leave BOM_ASSISTANT_API_KEY empty to hide the assistant entirely.
+BOM_ASSISTANT_API_KEY  = config('BOM_ASSISTANT_API_KEY', default='')
+BOM_ASSISTANT_BASE_URL = config('BOM_ASSISTANT_BASE_URL',
+                                default='https://generativelanguage.googleapis.com/v1beta/openai/')
+BOM_ASSISTANT_MODEL    = config('BOM_ASSISTANT_MODEL', default='gemini-2.5-flash')

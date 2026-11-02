@@ -1,0 +1,295 @@
+{# Voice assistant offcanvas for the BOM page — see apps/bom/assistant.py. #}
+{{ assistant_initial|json_script:"assistant-initial" }}
+
+<div class="offcanvas offcanvas-end" tabindex="-1" id="assistant-panel" style="width:min(460px, 100vw);">
+    <div class="offcanvas-header border-bottom" style="border-color:var(--border) !important;">
+        <h5 class="offcanvas-title" style="font-size:1rem;">
+            <i class="bi bi-mic me-2 text-primary"></i>Voice Assistant — {{ product.product_code }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+
+    <div class="offcanvas-body d-flex flex-column p-0">
+        <!-- Chat log -->
+        <div id="assistant-log" class="flex-grow-1 p-3" style="overflow-y:auto; font-size:0.9rem;">
+            <div class="text-muted" id="assistant-empty" style="font-size:0.85rem;">
+                Tap the mic and say what this product needs, e.g.
+                <em>"Teak wood, table top, 24 by 36 inch, one inch thick, 1 piece"</em> or
+                <em>"8 hinges"</em>. The assistant asks about anything missing and builds a draft.
+                Nothing is saved until you press <strong>Save to BOM</strong>.
+            </div>
+        </div>
+
+        <!-- Draft -->
+        <div class="border-top p-3" style="border-color:var(--border) !important; max-height:35vh; overflow-y:auto;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong style="font-size:0.85rem;">Draft <span id="draft-count" class="badge bg-secondary">0</span></strong>
+                <button type="button" class="btn btn-link btn-sm text-muted p-0" id="assistant-reset">Start over</button>
+            </div>
+            <ul id="draft-list" class="list-group list-group-flush mb-2" style="font-size:0.82rem;"></ul>
+            <form method="post" action="{% url 'bom:assistant_commit' product_pk=product.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-sm w-100" id="draft-save" disabled>
+                    <i class="bi bi-check2-circle me-1"></i> Save to BOM
+                </button>
+            </form>
+        </div>
+
+        <!-- Input -->
+        <div class="border-top p-3" style="border-color:var(--border) !important;">
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary" id="mic-btn" title="Talk">
+                    <i class="bi bi-mic-fill"></i>
+                </button>
+                <input type="text" id="assistant-input" class="form-control" placeholder="Speak, or type here…" maxlength="2000">
+                <button type="button" class="btn btn-outline-primary" id="assistant-send" title="Send">
+                    <i class="bi bi-send"></i>
+                </button>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-2" style="font-size:0.75rem;">
+                <span class="text-muted" id="assistant-status"></span>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="assistant-handsfree" checked>
+                    <label class="form-check-label text-muted" for="assistant-handsfree">Hands-free</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var initial  = JSON.parse(document.getElementById('assistant-initial').textContent);
+    // Voice is English only. Tamil is shown and can be typed, but is
+    // never listened for or spoken.
+    var LANG     = 'en-IN';
+    var TURN_URL   = '{% url "bom:assistant_turn" product_pk=product.pk %}';
+    var REMOVE_URL = '{% url "bom:assistant_remove_row" product_pk=product.pk %}';
+    var RESET_URL  = '{% url "bom:assistant_reset" product_pk=product.pk %}';
+    // CSRF_COOKIE_HTTPONLY is on, so read the token from the form instead of the cookie.
+    var CSRF = document.querySelector('#assistant-panel [name=csrfmiddlewaretoken]').value;
+
+    var logEl      = document.getElementById('assistant-log');
+    var emptyEl    = document.getElementById('assistant-empty');
+    var draftList  = document.getElementById('draft-list');
+    var draftCount = document.getElementById('draft-count');
+    var saveBtn    = document.getElementById('draft-save');
+    var input      = document.getElementById('assistant-input');
+    var micBtn     = document.getElementById('mic-btn');
+    var sendBtn    = document.getElementById('assistant-send');
+    var statusEl   = document.getElementById('assistant-status');
+    var handsFree  = document.getElementById('assistant-handsfree');
+    var panel      = document.getElementById('assistant-panel');
+
+    var busy = false;
+    var listening = false;
+
+    // ── Rendering ───────────────────────────────────────────────
+    function addBubble(role, text) {
+        emptyEl.style.display = 'none';
+        var wrap = document.createElement('div');
+        wrap.className = 'd-flex mb-2 ' + (role === 'user' ? 'justify-content-end' : 'justify-content-start');
+        var bubble = document.createElement('div');
+        bubble.className = 'px-3 py-2 rounded-3';
+        bubble.style.maxWidth = '85%';
+        bubble.style.background = role === 'user' ? 'var(--accent)' : 'var(--surface-raised)';
+        bubble.style.color = role === 'user' ? '#fff' : 'var(--text)';
+        bubble.textContent = text;
+        wrap.appendChild(bubble);
+        logEl.appendChild(wrap);
+        logEl.scrollTop = logEl.scrollHeight;
+        return bubble;
+    }
+
+    function renderDraft(draft) {
+        draftList.innerHTML = '';
+        draft.forEach(function (row, i) {
+            var li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center px-0';
+            var label = document.createElement('span');
+            var icon = document.createElement('i');
+            icon.className = 'bi me-1 ' + (row.type === 'bom' ? 'bi-diagram-3 text-warning' : 'bi-rulers text-info');
+            label.appendChild(icon);
+            label.appendChild(document.createTextNode((i + 1) + '. ' + row.text));
+            var remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn btn-sm btn-link text-danger p-0 ms-2';
+            remove.innerHTML = '<i class="bi bi-x-lg"></i>';
+            remove.title = 'Remove';
+            remove.addEventListener('click', function () { removeRow(i); });
+            li.appendChild(label);
+            li.appendChild(remove);
+            draftList.appendChild(li);
+        });
+        draftCount.textContent = draft.length;
+        saveBtn.disabled = draft.length === 0;
+    }
+
+    function setStatus(text) { statusEl.textContent = text || ''; }
+
+    // ── Server calls ────────────────────────────────────────────
+    function post(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            credentials: 'same-origin',
+            body: JSON.stringify(body || {})
+        }).then(function (r) {
+            return r.json().catch(function () { return { error: 'Unexpected server response (' + r.status + ').' }; });
+        });
+    }
+
+    function send(text) {
+        text = (text || '').trim();
+        if (!text || busy) return;
+        busy = true;
+        stopListening();
+        addBubble('user', text);
+        input.value = '';
+        setStatus('Thinking…');
+        sendBtn.disabled = micBtn.disabled = true;
+
+        post(TURN_URL, { text: text }).then(function (data) {
+            var reply = data.reply || data.error || 'Something went wrong.';
+            addBubble('assistant', reply);
+            if (data.draft) renderDraft(data.draft);
+            speak(reply);
+        }).catch(function () {
+            addBubble('assistant', 'Could not reach the server. Check your connection and try again.');
+        }).finally(function () {
+            busy = false;
+            sendBtn.disabled = micBtn.disabled = false;
+            setStatus('');
+        });
+    }
+
+    function removeRow(index) {
+        post(REMOVE_URL, { index: index }).then(function (data) {
+            if (data.draft) renderDraft(data.draft);
+        });
+    }
+
+    document.getElementById('assistant-reset').addEventListener('click', function () {
+        if (!confirm('Clear the conversation and the draft?')) return;
+        post(RESET_URL).then(function () {
+            logEl.querySelectorAll('.d-flex').forEach(function (n) { n.remove(); });
+            emptyEl.style.display = '';
+            renderDraft([]);
+        });
+    });
+
+    sendBtn.addEventListener('click', function () { send(input.value); });
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); send(input.value); }
+    });
+
+    // ── Text-to-speech ──────────────────────────────────────────
+    // Drops Tamil script (U+0B80–U+0BFF) and any brackets it leaves empty,
+    // so a reply like "Added Teak Wood (தேக்கு)" is spoken as "Added Teak Wood".
+    function speakable(text) {
+        return text
+            .replace(/[஀-௿]+/g, '')
+            .replace(/\(\s*[,\/\-]?\s*\)|\[\s*\]/g, '')
+            .replace(/\s+([,.!?])/g, '$1')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
+    function englishVoice() {
+        var voices = window.speechSynthesis.getVoices();
+        function find(prefix) {
+            return voices.filter(function (v) {
+                return v.lang && v.lang.replace('_', '-').toLowerCase().indexOf(prefix) === 0;
+            })[0];
+        }
+        return find('en-in') || find('en-us') || find('en');
+    }
+
+    function speak(text) {
+        text = speakable(text);
+        if (!text || !('speechSynthesis' in window)) { maybeListenAgain(); return; }
+        window.speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(text);
+        var voice = englishVoice();
+        u.lang = voice ? voice.lang : LANG;
+        if (voice) u.voice = voice;
+        u.onend = maybeListenAgain;
+        u.onerror = maybeListenAgain;
+        setStatus('Speaking…');
+        window.speechSynthesis.speak(u);
+    }
+
+    function maybeListenAgain() {
+        setStatus('');
+        // Hands-free: keep the conversation going while the panel is open.
+        if (handsFree.checked && recognition && panel.classList.contains('show')) startListening();
+    }
+
+    // ── Speech-to-text (Chrome / Edge / Android) ────────────────
+    var Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var recognition = null;
+
+    if (Recognition) {
+        recognition = new Recognition();
+        recognition.lang = 'en-IN';     // fixed — no Tamil speech recognition
+        recognition.interimResults = true;
+        recognition.continuous = false;
+
+        recognition.onresult = function (e) {
+            var transcript = '';
+            var isFinal = false;
+            for (var i = e.resultIndex; i < e.results.length; i++) {
+                transcript += e.results[i][0].transcript;
+                if (e.results[i].isFinal) isFinal = true;
+            }
+            input.value = transcript;
+            if (isFinal) send(transcript);
+        };
+        recognition.onend = function () {
+            listening = false;
+            micBtn.classList.remove('btn-danger');
+            micBtn.classList.add('btn-primary');
+            if (!busy) setStatus('');
+        };
+        recognition.onerror = function (e) {
+            if (e.error === 'not-allowed') setStatus('Microphone blocked — allow it in the browser, or type instead.');
+            else if (e.error !== 'no-speech' && e.error !== 'aborted') setStatus('Mic error: ' + e.error);
+        };
+    } else {
+        micBtn.disabled = true;
+        micBtn.title = 'Voice input needs Chrome or Edge — type instead.';
+        handsFree.checked = false;
+        handsFree.disabled = true;
+    }
+
+    function startListening() {
+        if (!recognition || listening || busy) return;
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        try {
+            recognition.start();
+            listening = true;
+            micBtn.classList.remove('btn-primary');
+            micBtn.classList.add('btn-danger');
+            setStatus('Listening…');
+        } catch (err) { /* already started */ }
+    }
+
+    function stopListening() {
+        if (recognition && listening) recognition.stop();
+    }
+
+    micBtn.addEventListener('click', function () {
+        if (listening) stopListening(); else startListening();
+    });
+
+    // Stop talking/listening when the panel closes.
+    panel.addEventListener('hidden.bs.offcanvas', function () {
+        stopListening();
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    });
+
+    // ── Restore after reload ────────────────────────────────────
+    (initial.log || []).forEach(function (m) { addBubble(m.role, m.text); });
+    renderDraft(initial.draft || []);
+})();
+</script>

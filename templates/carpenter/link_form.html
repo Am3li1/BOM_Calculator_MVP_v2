@@ -1,0 +1,687 @@
+{% extends "carpenter/link_base.html" %}
+
+{% block body %}
+
+{{ resource_options|json_script:"resource-options" }}
+{{ part_options|json_script:"part-options" }}
+{{ initial_rows|json_script:"initial-rows" }}
+
+<style>
+    .entry {
+        background: var(--surface-raised);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+    .entry-error { font-size: 0.85rem; min-height: 0; }
+    .entry-table { font-size: 0.9rem; margin-bottom: 0; }
+    .entry-table th { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+    .entry-table td { vertical-align: middle; }
+    .entry-table .row-num { color: var(--text-muted); width: 1.5rem; }
+    .entry-table .row-actions { white-space: nowrap; width: 1%; text-align: right; }
+    .entry-table .row-actions .btn { padding: 0.2rem 0.45rem; }
+    .entry-table tr.flash td { background: rgba(47, 125, 255, 0.18); transition: background 0.6s; }
+    .entry-table .sub { font-size: 0.78rem; color: var(--text-muted); }
+    .empty-note { font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 8px 0; margin: 0; }
+    .combo-dropdown .list-group-item { font-size: 0.95rem; }
+    .combo-dropdown .active-option { background: var(--accent); color: #fff; }
+    .unit-select { max-width: 5.2rem; }
+</style>
+
+<div class="link-card">
+    <h1 style="font-size:1.25rem; font-weight:700;">{{ labels.title }}</h1>
+    <p class="text-muted mb-0" style="font-size:0.9rem;">{{ labels.intro }}</p>
+</div>
+
+{% if errors %}
+<div class="alert alert-danger">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-circle me-1"></i>{{ labels.fix_errors }}</div>
+    <ul class="mb-0 ps-3" style="font-size:0.9rem;">
+        {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<form method="post" id="submission-form" novalidate>
+    {% csrf_token %}
+
+    <!-- ══ Materials ══════════════════════════════════════════════
+         The entry fields have no name attribute — only the table rows'
+         hidden inputs are posted, so the bom_* arrays stay aligned. -->
+    <div class="link-card">
+        <h2><i class="bi bi-box-seam me-2 text-warning"></i>{{ labels.materials }}</h2>
+
+        <div class="entry" id="bom-entry">
+            <div class="mb-2">
+                <label class="form-label">{{ labels.material }}</label>
+                <div class="combo-slot" id="bom-material"></div>
+            </div>
+            <div class="d-flex gap-2 align-items-end">
+                <div class="flex-grow-1">
+                    <label class="form-label">{{ labels.quantity }} <span id="bom-unit-hint"></span></label>
+                    <input type="number" id="bom-quantity" class="form-control"
+                           step="any" min="0" inputmode="decimal" enterkeyhint="done">
+                </div>
+                <button type="button" class="btn btn-primary" id="bom-add">
+                    <i class="bi bi-plus-lg me-1"></i>{{ labels.add }}
+                </button>
+            </div>
+            <div class="entry-error text-danger mt-2" id="bom-error"></div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm entry-table" id="bom-table">
+                <thead><tr>
+                    <th class="row-num">#</th>
+                    <th>{{ labels.material }}</th>
+                    <th class="text-end">{{ labels.quantity }}</th>
+                    <th></th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-note" id="bom-empty">{{ labels.nothing_yet }}</p>
+    </div>
+
+    <!-- ══ Parts with measurements ═══════════════════════════════ -->
+    <div class="link-card">
+        <h2><i class="bi bi-rulers me-2 text-info"></i>{{ labels.dimensions }}</h2>
+
+        <div class="entry" id="dim-entry">
+            <div class="mb-2">
+                <label class="form-label">{{ labels.material }}</label>
+                <div class="combo-slot" id="dim-material"></div>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">{{ labels.part_name }}</label>
+                <div class="combo-slot" id="dim-part"></div>
+            </div>
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label class="form-label">{{ labels.width }}</label>
+                    <div class="input-group">
+                        <input type="number" id="dim-width" class="form-control" step="any" min="0" inputmode="decimal">
+                        <select id="dim-width-unit" class="form-select unit-select">
+                            {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'in' %} selected{% endif %}>{{ code }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <label class="form-label">{{ labels.breadth }}</label>
+                    <div class="input-group">
+                        <input type="number" id="dim-breadth" class="form-control" step="any" min="0" inputmode="decimal">
+                        <select id="dim-breadth-unit" class="form-select unit-select">
+                            {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'in' %} selected{% endif %}>{{ code }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <label class="form-label">{{ labels.length }}</label>
+                    <div class="input-group">
+                        <input type="number" id="dim-length" class="form-control" step="any" min="0" inputmode="decimal">
+                        <select id="dim-length-unit" class="form-select unit-select">
+                            {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'ft' %} selected{% endif %}>{{ code }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <label class="form-label">{{ labels.height }} {{ labels.optional }}</label>
+                    <div class="input-group">
+                        <input type="number" id="dim-height" class="form-control" step="any" min="0" inputmode="decimal">
+                        <select id="dim-height-unit" class="form-select unit-select">
+                            {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'in' %} selected{% endif %}>{{ code }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex gap-2 align-items-end">
+                <div class="flex-grow-1">
+                    <label class="form-label">{{ labels.pieces }}</label>
+                    <input type="number" id="dim-pieces" class="form-control" step="1" min="1" value="1"
+                           inputmode="numeric" enterkeyhint="done">
+                </div>
+                <button type="button" class="btn btn-primary" id="dim-add">
+                    <i class="bi bi-plus-lg me-1"></i>{{ labels.add }}
+                </button>
+            </div>
+            <div class="entry-error text-danger mt-2" id="dim-error"></div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm entry-table" id="dim-table">
+                <thead><tr>
+                    <th class="row-num">#</th>
+                    <th>{{ labels.part_name }}</th>
+                    <th>{{ labels.size }}</th>
+                    <th class="text-end">{{ labels.pieces }}</th>
+                    <th></th>
+                </tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <p class="empty-note" id="dim-empty">{{ labels.nothing_yet }}</p>
+    </div>
+
+    <div class="link-card">
+        <label class="form-label" for="note">{{ labels.note }} {{ labels.optional }}</label>
+        <textarea name="note" id="note" class="form-control" rows="3" maxlength="2000">{{ note }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg w-100 mb-5">
+        <i class="bi bi-send me-1"></i> {{ labels.submit }}
+    </button>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    var LANG = '{{ lang|escapejs }}';
+    var L = {
+        noMatch:       '{{ labels.no_match|escapejs }}',
+        search:        '{{ labels.search|escapejs }}',
+        partSearch:    '{{ labels.part_search|escapejs }}',
+        newPart:       '{{ labels.new_part|escapejs }}',
+        edit:          '{{ labels.edit|escapejs }}',
+        remove:        '{{ labels.remove|escapejs }}',
+        pickMaterial:  '{{ labels.pick_material|escapejs }}',
+        enterQuantity: '{{ labels.enter_quantity|escapejs }}',
+        enterPart:     '{{ labels.enter_part|escapejs }}',
+        enterSizes:    '{{ labels.enter_sizes|escapejs }}',
+        enterPieces:   '{{ labels.enter_pieces|escapejs }}',
+        notAdded:      '{{ labels.not_added|escapejs }}'
+    };
+    var resources = JSON.parse(document.getElementById('resource-options').textContent);
+    var parts = JSON.parse(document.getElementById('part-options').textContent);
+    var initial = JSON.parse(document.getElementById('initial-rows').textContent);
+    var byId = {};
+    resources.forEach(function (o) { byId[String(o.id)] = o; });
+
+    // Same unit defaults as the admin Add Dimension page.
+    var DEFAULT_UNITS = {
+        solid_wood: { width: 'in', breadth: 'in', length: 'ft' },
+        sheet:      { width: 'ft', breadth: 'ft', length: 'ft' }
+    };
+    var DIMS = ['width', 'breadth', 'length', 'height'];
+    // Order and names must match _DIM_FIELDS in apps/carpenter/views.py.
+    var DIM_FIELDS = ['resource', 'part', 'width', 'width_unit', 'breadth', 'breadth_unit',
+                      'height', 'height_unit', 'length', 'length_unit', 'pieces'];
+
+    function $(id) { return document.getElementById(id); }
+
+    function norm(s) {
+        return (s || '').normalize('NFC').toLowerCase().trim();
+    }
+
+    function matches(item, q, fields) {
+        if (!q) return true;
+        return fields.some(function (f) { return norm(item[f]).indexOf(q) !== -1; });
+    }
+
+    function resourceLabel(opt) {
+        if (LANG === 'ta' && opt.name_ta) return opt.name_ta + ' (' + opt.name + ')';
+        return opt.name;
+    }
+
+    function partLabel(p) {
+        if (LANG === 'ta' && p.name_ta) return p.name_ta + ' (' + p.name + ')';
+        return p.name;
+    }
+
+    function isPositive(v) {
+        var n = parseFloat(v);
+        return v !== '' && isFinite(n) && n > 0;
+    }
+
+    function fmt(n) {
+        return String(+parseFloat(n).toFixed(4));
+    }
+
+    // ── Type-to-filter combobox ───────────────────────────────────
+    // Opens on focus *and* on tap: on phones the input often keeps focus
+    // after a pick, so a second tap fires no focus event — that is why
+    // the old dropdown sometimes didn't appear. Taps on the list use
+    // pointerdown + preventDefault so the input never blurs mid-pick.
+    // Enter picks the highlighted (or first) option instead of
+    // submitting the whole form.
+    var openCombo = null;
+
+    function buildCombo(slot, cfg) {
+        var wrap = document.createElement('div');
+        wrap.className = 'position-relative';
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control';
+        input.placeholder = cfg.placeholder;
+        input.autocomplete = 'off';
+        input.setAttribute('autocorrect', 'off');
+        input.setAttribute('spellcheck', 'false');
+        input.setAttribute('enterkeyhint', 'next');
+        var dropdown = document.createElement('div');
+        dropdown.className = 'list-group position-absolute w-100 shadow combo-dropdown';
+        wrap.appendChild(input);
+        wrap.appendChild(dropdown);
+        slot.appendChild(wrap);
+
+        var selected = null, shown = [], active = -1;
+
+        function close() {
+            dropdown.style.display = 'none';
+            active = -1;
+            if (openCombo === api) openCombo = null;
+        }
+
+        function highlight(i) {
+            var buttons = dropdown.querySelectorAll('button');
+            buttons.forEach(function (b) { b.classList.remove('active-option'); });
+            active = i;
+            if (buttons[i]) {
+                buttons[i].classList.add('active-option');
+                buttons[i].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function open() {
+            if (openCombo && openCombo !== api) openCombo.close();
+            var q = selected ? '' : norm(input.value);
+            shown = cfg.items.filter(function (item) { return matches(item, q, cfg.fields); }).slice(0, 200);
+            dropdown.innerHTML = '';
+            active = -1;
+
+            if (!shown.length) {
+                if (cfg.allowFree) { close(); return; }
+                var empty = document.createElement('div');
+                empty.className = 'list-group-item text-muted py-2';
+                empty.textContent = L.noMatch;
+                dropdown.appendChild(empty);
+            }
+            var lastGroup = null;
+            shown.forEach(function (item, i) {
+                if (cfg.group && cfg.group(item) !== lastGroup) {
+                    lastGroup = cfg.group(item);
+                    var header = document.createElement('div');
+                    header.className = 'list-group-item list-group-item-secondary py-1 fw-semibold';
+                    header.style.fontSize = '0.72rem';
+                    header.textContent = lastGroup;
+                    dropdown.appendChild(header);
+                }
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.tabIndex = -1;
+                btn.className = 'list-group-item list-group-item-action py-2';
+                btn.textContent = cfg.optionText(item);
+                btn.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+                btn.addEventListener('click', function () { pick(item); });
+                dropdown.appendChild(btn);
+            });
+            dropdown.style.display = 'block';
+            openCombo = api;
+
+            // Keep the list above the on-screen keyboard.
+            setTimeout(function () {
+                if (dropdown.style.display !== 'block') return;
+                var viewH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                if (dropdown.getBoundingClientRect().bottom > viewH) {
+                    input.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                }
+            }, 300);
+        }
+
+        function pick(item, silent) {
+            selected = item;
+            input.value = cfg.label(item);
+            input.classList.remove('is-invalid');
+            close();
+            if (cfg.onSelect && !silent) cfg.onSelect(item);
+        }
+
+        input.addEventListener('input', function () {
+            selected = null;
+            open();
+        });
+        input.addEventListener('focus', open);
+        input.addEventListener('click', function () {
+            if (dropdown.style.display !== 'block') open();
+        });
+        input.addEventListener('keydown', function (e) {
+            var count = shown.length;
+            if (e.key === 'ArrowDown' && count) {
+                e.preventDefault();
+                if (dropdown.style.display !== 'block') open();
+                highlight(Math.min(active + 1, count - 1));
+            } else if (e.key === 'ArrowUp' && count) {
+                e.preventDefault();
+                highlight(Math.max(active - 1, 0));
+            } else if (e.key === 'Escape') {
+                close();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                var open_ = dropdown.style.display === 'block';
+                if (open_ && active >= 0) pick(shown[active]);
+                else if (open_ && !cfg.allowFree && !selected && count) pick(shown[0]);
+                else if (cfg.onEnter) { close(); cfg.onEnter(); }
+            }
+        });
+        input.addEventListener('blur', function () {
+            // Free-text field: an exact match on name / Tamil name / alias
+            // snaps to the canonical English part name.
+            if (cfg.allowFree && !selected && input.value.trim()) {
+                var q = norm(input.value);
+                var exact = cfg.items.find(function (item) {
+                    return norm(item.name) === q || norm(item.name_ta) === q ||
+                        (item.aliases || '').split('\n').some(function (a) { return norm(a) === q; });
+                });
+                if (exact) pick(exact, true);
+            }
+            close();
+        });
+
+        var api = {
+            input: input,
+            close: close,
+            selected: function () { return selected; },
+            text: function () { return input.value.trim(); },
+            set: function (item) { if (item) pick(item, true); },
+            setText: function (t) { selected = null; input.value = t || ''; },
+            clear: function () { selected = null; input.value = ''; input.classList.remove('is-invalid'); },
+            focus: function () { input.focus(); }
+        };
+        return api;
+    }
+
+    document.addEventListener('pointerdown', function (e) {
+        if (openCombo && !openCombo.input.parentNode.contains(e.target)) openCombo.close();
+    });
+
+    // ── Table helpers ────────────────────────────────────────────
+    function hidden(name, value) {
+        var h = document.createElement('input');
+        h.type = 'hidden';
+        h.name = name;
+        h.value = value == null ? '' : value;
+        return h;
+    }
+
+    function td(text, cls) {
+        var cell = document.createElement('td');
+        if (cls) cell.className = cls;
+        if (text != null) cell.textContent = text;
+        return cell;
+    }
+
+    function actionsCell(onEdit, onRemove) {
+        var cell = td(null, 'row-actions');
+        var edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn btn-sm btn-outline-secondary me-1';
+        edit.title = L.edit;
+        edit.innerHTML = '<i class="bi bi-pencil"></i>';
+        edit.addEventListener('click', onEdit);
+        var rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'btn btn-sm btn-outline-danger';
+        rm.title = L.remove;
+        rm.innerHTML = '<i class="bi bi-trash"></i>';
+        rm.addEventListener('click', onRemove);
+        cell.appendChild(edit);
+        cell.appendChild(rm);
+        return cell;
+    }
+
+    function refreshTable(prefix) {
+        var rows = $(prefix + '-table').tBodies[0].rows;
+        for (var i = 0; i < rows.length; i++) rows[i].cells[0].textContent = i + 1;
+        $(prefix + '-table').style.display = rows.length ? '' : 'none';
+        $(prefix + '-empty').style.display = rows.length ? 'none' : '';
+    }
+
+    function flash(tr) {
+        tr.classList.add('flash');
+        setTimeout(function () { tr.classList.remove('flash'); }, 700);
+    }
+
+    function showError(prefix, msg) {
+        $(prefix + '-error').textContent = msg || '';
+    }
+
+    // ── Materials ────────────────────────────────────────────────
+    var bomQty = $('bom-quantity');
+    var bomMaterial = buildCombo($('bom-material'), {
+        items: resources,
+        fields: ['name', 'name_ta', 'aliases', 'category'],
+        placeholder: L.search,
+        label: resourceLabel,
+        optionText: function (o) { return resourceLabel(o) + ' — ' + o.unit; },
+        group: function (o) { return o.category; },
+        onSelect: function (opt) {
+            $('bom-unit-hint').textContent = '(' + opt.unit + ')';
+            if (opt.unit === 'set' && !bomQty.value) bomQty.value = '1';
+            bomQty.focus();
+        },
+        onEnter: function () { bomQty.focus(); }
+    });
+
+    function bomRowFor(resourceId) {
+        var found = null;
+        $('bom-table').querySelectorAll('tbody tr').forEach(function (tr) {
+            if (tr.dataset.resource === String(resourceId)) found = tr;
+        });
+        return found;
+    }
+
+    function appendBomRow(resourceId, quantity) {
+        var opt = byId[String(resourceId)];
+        var tr = document.createElement('tr');
+        tr.dataset.resource = resourceId;
+        tr.appendChild(td('', 'row-num'));
+        var nameCell = td(opt ? resourceLabel(opt) : '—');
+        nameCell.appendChild(hidden('bom_resource', resourceId));
+        nameCell.appendChild(hidden('bom_quantity', quantity));
+        tr.appendChild(nameCell);
+        tr.appendChild(td(quantity + (opt ? ' ' + opt.unit : ''), 'text-end text-nowrap qty-cell'));
+        tr.appendChild(actionsCell(function () {
+            if (opt) bomMaterial.set(opt); else bomMaterial.clear();
+            $('bom-unit-hint').textContent = opt ? '(' + opt.unit + ')' : '';
+            bomQty.value = quantity;
+            tr.remove();
+            refreshTable('bom');
+            bomQty.focus();
+        }, function () {
+            tr.remove();
+            refreshTable('bom');
+        }));
+        $('bom-table').tBodies[0].appendChild(tr);
+        refreshTable('bom');
+        return tr;
+    }
+
+    function bomEntryDirty() {
+        return !!(bomMaterial.text() || bomQty.value);
+    }
+
+    function addBom() {
+        var opt = bomMaterial.selected();
+        if (!opt) {
+            bomMaterial.input.classList.add('is-invalid');
+            showError('bom', L.pickMaterial);
+            bomMaterial.focus();
+            return false;
+        }
+        if (!isPositive(bomQty.value)) {
+            showError('bom', L.enterQuantity);
+            bomQty.focus();
+            return false;
+        }
+        showError('bom', '');
+
+        // Same material twice → add to the existing line (the server
+        // rejects duplicates).
+        var existing = bomRowFor(opt.id), tr;
+        if (existing) {
+            var total = fmt(parseFloat(existing.querySelector('[name="bom_quantity"]').value) +
+                            parseFloat(bomQty.value));
+            existing.querySelector('[name="bom_quantity"]').value = total;
+            existing.querySelector('.qty-cell').textContent = total + ' ' + opt.unit;
+            tr = existing;
+        } else {
+            tr = appendBomRow(opt.id, fmt(bomQty.value));
+        }
+        flash(tr);
+        bomMaterial.clear();
+        bomQty.value = '';
+        $('bom-unit-hint').textContent = '';
+        bomMaterial.focus();
+        return true;
+    }
+
+    $('bom-add').addEventListener('click', addBom);
+    bomQty.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); addBom(); }
+    });
+
+    // ── Parts with measurements ──────────────────────────────────
+    var dimPieces = $('dim-pieces');
+    var dimPart;
+    var dimMaterial = buildCombo($('dim-material'), {
+        items: resources,
+        fields: ['name', 'name_ta', 'aliases', 'category'],
+        placeholder: L.search,
+        label: resourceLabel,
+        optionText: function (o) { return resourceLabel(o) + ' — ' + o.unit; },
+        group: function (o) { return o.category; },
+        onSelect: function (opt) {
+            var d = DEFAULT_UNITS[opt.material_type];
+            if (d) {
+                ['width', 'breadth', 'length'].forEach(function (dim) {
+                    $('dim-' + dim + '-unit').value = d[dim];
+                });
+            }
+            dimPart.focus();
+        },
+        onEnter: function () { dimPart.focus(); }
+    });
+    dimPart = buildCombo($('dim-part'), {
+        items: parts,
+        fields: ['name', 'name_ta', 'aliases'],
+        placeholder: L.partSearch,
+        allowFree: true,
+        label: function (p) { return p.name; },
+        optionText: partLabel,
+        onSelect: function () { $('dim-width').focus(); },
+        onEnter: function () { $('dim-width').focus(); }
+    });
+
+    function readDimEntry() {
+        var opt = dimMaterial.selected();
+        var v = {
+            resource: opt ? opt.id : '',
+            part: dimPart.selected() ? dimPart.selected().name : dimPart.text(),
+            pieces: dimPieces.value.trim()
+        };
+        DIMS.forEach(function (dim) {
+            v[dim] = $('dim-' + dim).value.trim();
+            v[dim + '_unit'] = $('dim-' + dim + '-unit').value;
+        });
+        return v;
+    }
+
+    function sizeText(v) {
+        var s = [v.width + ' ' + v.width_unit, v.breadth + ' ' + v.breadth_unit,
+                 v.length + ' ' + v.length_unit].join(' × ');
+        if (v.height) s += ' · H ' + v.height + ' ' + v.height_unit;
+        return s;
+    }
+
+    function appendDimRow(v) {
+        var opt = byId[String(v.resource)];
+        var tr = document.createElement('tr');
+        tr.appendChild(td('', 'row-num'));
+        var partCell = td(v.part || '—');
+        var sub = document.createElement('div');
+        sub.className = 'sub';
+        sub.textContent = opt ? resourceLabel(opt) : '—';
+        partCell.appendChild(sub);
+        DIM_FIELDS.forEach(function (f) { partCell.appendChild(hidden('dim_' + f, v[f])); });
+        tr.appendChild(partCell);
+        tr.appendChild(td(sizeText(v)));
+        tr.appendChild(td(v.pieces || '1', 'text-end'));
+        tr.appendChild(actionsCell(function () {
+            if (opt) dimMaterial.set(opt); else dimMaterial.clear();
+            dimPart.setText(v.part);
+            DIMS.forEach(function (dim) {
+                $('dim-' + dim).value = v[dim] || '';
+                if (v[dim + '_unit']) $('dim-' + dim + '-unit').value = v[dim + '_unit'];
+            });
+            dimPieces.value = v.pieces || '1';
+            tr.remove();
+            refreshTable('dim');
+            $('dim-width').focus();
+        }, function () {
+            tr.remove();
+            refreshTable('dim');
+        }));
+        $('dim-table').tBodies[0].appendChild(tr);
+        refreshTable('dim');
+        return tr;
+    }
+
+    function dimEntryDirty() {
+        return !!(dimMaterial.text() || dimPart.text() ||
+                  DIMS.some(function (dim) { return $('dim-' + dim).value; }));
+    }
+
+    function addDim() {
+        var v = readDimEntry();
+        var fail = function (msg, el) { showError('dim', msg); el.focus(); return false; };
+        if (!v.resource) {
+            dimMaterial.input.classList.add('is-invalid');
+            return fail(L.pickMaterial, dimMaterial.input);
+        }
+        if (!v.part) return fail(L.enterPart, dimPart.input);
+        var missing = ['width', 'breadth', 'length'].filter(function (dim) { return !isPositive(v[dim]); });
+        if (missing.length) return fail(L.enterSizes, $('dim-' + missing[0]));
+        if (!/^\d+$/.test(v.pieces) || parseInt(v.pieces, 10) < 1) return fail(L.enterPieces, dimPieces);
+        showError('dim', '');
+
+        flash(appendDimRow(v));
+        // Keep the material and units — the next part is usually cut
+        // from the same board.
+        dimPart.clear();
+        DIMS.forEach(function (dim) { $('dim-' + dim).value = ''; });
+        dimPieces.value = '1';
+        dimPart.focus();
+        return true;
+    }
+
+    $('dim-add').addEventListener('click', addDim);
+    ['dim-width', 'dim-breadth', 'dim-length', 'dim-height', 'dim-pieces'].forEach(function (id) {
+        $(id).addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); addDim(); }
+        });
+    });
+
+    // ── Restore rows after a failed submit ───────────────────────
+    (initial.bom || []).forEach(function (r) { appendBomRow(r.resource, r.quantity); });
+    (initial.dim || []).forEach(appendDimRow);
+    refreshTable('bom');
+    refreshTable('dim');
+
+    // Anything left in an entry box when Send is pressed gets added
+    // first; if it can't be added, stop and say so rather than silently
+    // dropping it.
+    $('submission-form').addEventListener('submit', function (e) {
+        if (bomEntryDirty() && !addBom()) {
+            e.preventDefault();
+            showError('bom', L.notAdded + ' ' + $('bom-error').textContent);
+            return;
+        }
+        if (dimEntryDirty() && !addDim()) {
+            e.preventDefault();
+            showError('dim', L.notAdded + ' ' + $('dim-error').textContent);
+        }
+    });
+})();
+</script>
+{% endblock %}

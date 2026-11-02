@@ -178,3 +178,342 @@ class WoodPartFormulaPrecedenceTests(TestCase):
         )
         with self.assertRaises(FormulaError):
             wp.calculated_quantity
+
+
+# ════════════════════════════════════════════════════════════════════
+# Voice assistant (apps/bom/assistant.py) — the OpenAI-compatible
+# client is always mocked; these tests never call a real provider.
+# ════════════════════════════════════════════════════════════════════
+
+import json
+from unittest import mock
+
+import openai
+from django.contrib.auth.models import User
+from django.test import override_settings
+from django.urls import reverse
+from openai.types.chat import ChatCompletion
+
+from apps.bom import assistant
+from apps.bom.models import BOMItem
+
+
+def _completion(message, finish_reason='stop'):
+    return ChatCompletion.model_validate({
+        'id': 'chatcmpl-test', 'object': 'chat.completion', 'created': 0, 'model': 'gemini-2.5-flash',
+        'choices': [{'index': 0, 'finish_reason': finish_reason, 'message': {'role': 'assistant', **message}}],
+    })
+
+
+def _tool_call(name, args, call_id='call_1', raw_arguments=None):
+    return _completion({
+        'content': None,
+        'tool_calls': [{
+            'id': call_id, 'type': 'function',
+            'function': {'name': name, 'arguments': raw_arguments if raw_arguments is not None else json.dumps(args)},
+            # Gemini's thought signature — must survive the round trip.
+            'extra_content': {'google': {'thought_signature': 'sig'}},
+        }],
+    }, finish_reason='tool_calls')
+
+
+def _text(text):
+    return _completion({'content': text})
+
+
+def _fake_client(*responses):
+    client = mock.Mock()
+    client.chat.completions.create.side_effect = list(responses)
+    return client
+
+
+def _rate_limit_error():
+    response = mock.Mock(status_code=429, headers={}, request=mock.Mock())
+    return openai.RateLimitError('Resource has been exhausted', response=response, body=None)
+
+
+@override_settings(BOM_ASSISTANT_API_KEY='test-key', BOM_ASSISTANT_MODEL='gemini-2.5-flash')
+class AssistantTurnTests(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.product = Product.objects.create(product_code='TABLE-01', product_name='Coffee Table')
+        cls.teak = Resource.objects.create(
+            resource_name='Teak Wood', name_ta='தேக்கு', category='Carpentry Materials',
+            material_type='solid_wood', unit='cft', rate=Decimal('1000'),
+        )
+        cls.hinge = Resource.objects.create(
+            resource_name='Hinge', category='Hardware', unit='nos', rate=Decimal('50'),
+        )
+
+    def test_tool_loop_stages_a_row_and_returns_reply(self):
+        client = _fake_client(
+            _tool_call('search_resources', {'query': 'hinges'}, 'call_1'),
+            _tool_call('stage_material', {'resource_id': self.hinge.pk, 'quantity': 8}, 'call_2'),
+            _text('Added 8 hinges.'),
+        )
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=client):
+            reply = assistant.run_turn(self.product, state, 'eight hinges')
+
+        self.assertEqual(reply, 'Added 8 hinges.')
+        self.assertEqual(state['draft'][0]['resource_id'], self.hinge.pk)
+        self.assertEqual(state['draft'][0]['quantity'], '8')
+        # user, assistant(tool call), tool, assistant(tool call), tool, assistant(text)
+        self.assertEqual([m['role'] for m in state['messages']],
+                         ['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'])
+        self.assertEqual(state['messages'][2]['tool_call_id'], 'call_1')
+        # Provider extras on tool calls are passed back unchanged.
+        self.assertEqual(state['messages'][1]['tool_calls'][0]['extra_content'],
+                         {'google': {'thought_signature': 'sig'}})
+        # The assistant never writes to the BOM itself.
+        self.assertFalse(BOMItem.objects.exists())
+
+        kwargs = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs['model'], 'gemini-2.5-flash')
+        self.assertEqual(kwargs['messages'][0]['role'], 'system')
+        self.assertEqual(kwargs['tools'][0]['type'], 'function')
+        # Search results reach the model without rates.
+        self.assertNotIn('rate', state['messages'][2]['content'])
+
+    def test_tool_calls_with_stop_finish_reason_still_run(self):
+        # Some providers report "stop" even when they return tool calls.
+        call = _tool_call('stage_material', {'resource_id': self.hinge.pk, 'quantity': 2})
+        call.choices[0].finish_reason = 'stop'
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(call, _text('Done.'))):
+            assistant.run_turn(self.product, state, 'two hinges')
+        self.assertEqual(len(state['draft']), 1)
+
+    def test_malformed_tool_arguments_go_back_to_the_model(self):
+        client = _fake_client(
+            _tool_call('stage_material', None, 'call_1', raw_arguments='{"resource_id": 5, "quantity": '),
+            _tool_call('stage_material', {'resource_id': self.hinge.pk, 'quantity': 'eight'}, 'call_2'),
+            _tool_call('stage_material', {'quantity': 3}, 'call_3'),
+            _tool_call('stage_material', ['not', 'an', 'object'], 'call_4'),
+            _tool_call('drop_table', {}, 'call_5'),
+            _text('Which material did you mean?'),
+        )
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=client), \
+                mock.patch.object(assistant, 'MAX_TOOL_ROUNDS', 10):
+            reply = assistant.run_turn(self.product, state, 'eight hinges')
+
+        self.assertEqual(reply, 'Which material did you mean?')
+        self.assertEqual(state['draft'], [])
+        errors = [json.loads(m['content'])['error'] for m in state['messages'] if m['role'] == 'tool']
+        self.assertEqual(len(errors), 5)
+        self.assertIn('not valid JSON', errors[0])
+        self.assertIn('quantity must be a number', errors[1])
+        self.assertIn('resource_id is required', errors[2])
+        self.assertIn('must be a JSON object', errors[3])
+        self.assertIn('Unknown tool', errors[4])
+
+    def test_string_numbers_are_accepted(self):
+        args, error = assistant.parse_arguments(
+            'stage_dimension',
+            json.dumps({'resource_id': str(self.teak.pk), 'part_name': 'Leg', 'width': '2',
+                        'width_unit': 'IN', 'breadth': 2, 'breadth_unit': 'in', 'length': '2.5',
+                        'length_unit': 'ft', 'pieces': '4.0'}),
+        )
+        self.assertIsNone(error)
+        self.assertEqual(args['resource_id'], self.teak.pk)
+        self.assertEqual(args['pieces'], 4)
+        self.assertEqual(args['width_unit'], 'in')
+
+        _, error = assistant.parse_arguments('remove_staged_row', '{"row_number": 0}')
+        self.assertIn('at least 1', error)
+        _, error = assistant.parse_arguments('stage_dimension', json.dumps({
+            'resource_id': self.teak.pk, 'part_name': 'Leg', 'width': 2, 'width_unit': 'yards',
+            'breadth': 2, 'breadth_unit': 'in', 'length': 2, 'length_unit': 'ft', 'pieces': 1,
+        }))
+        self.assertIn('width_unit must be one of', error)
+
+    def test_search_falls_back_to_individual_words(self):
+        # Speech adds extra words; the whole phrase matches nothing, so
+        # per-word matching has to find "Hinge".
+        result, is_error = assistant.execute_tool(
+            'search_resources', {'query': 'steel hinge pieces'}, self.product, assistant.new_state()
+        )
+        self.assertFalse(is_error)
+        self.assertEqual(result['matches'][0]['id'], self.hinge.pk)
+        self.assertNotIn('rate', result['matches'][0])
+
+    def test_search_matches_tamil_name(self):
+        result, _ = assistant.execute_tool(
+            'search_resources', {'query': 'தேக்கு'}, self.product, assistant.new_state()
+        )
+        self.assertEqual(result['matches'][0]['id'], self.teak.pk)
+
+    def test_invalid_stage_is_reported_to_the_model(self):
+        state = assistant.new_state()
+        result, is_error = assistant.execute_tool(
+            'stage_material', {'resource_id': 99999, 'quantity': 2}, self.product, state
+        )
+        self.assertTrue(is_error)
+        self.assertEqual(state['draft'], [])
+
+    def test_same_material_cannot_be_staged_twice(self):
+        state = assistant.new_state()
+        args = {'resource_id': self.hinge.pk, 'quantity': 2}
+        assistant.execute_tool('stage_material', args, self.product, state)
+        _, is_error = assistant.execute_tool('stage_material', args, self.product, state)
+        self.assertTrue(is_error)
+        self.assertEqual(len(state['draft']), 1)
+
+    def test_stage_dimension_and_remove(self):
+        state = assistant.new_state()
+        _, is_error = assistant.execute_tool('stage_dimension', {
+            'resource_id': self.teak.pk, 'part_name': 'Leg', 'width': 2, 'width_unit': 'in',
+            'breadth': 2, 'breadth_unit': 'in', 'length': 2.5, 'length_unit': 'ft', 'pieces': 4,
+        }, self.product, state)
+        self.assertFalse(is_error)
+        self.assertEqual(state['draft'][0]['part_name'], 'Leg')
+
+        _, is_error = assistant.execute_tool('remove_staged_row', {'row_number': 1}, self.product, state)
+        self.assertFalse(is_error)
+        self.assertEqual(state['draft'], [])
+
+    def test_content_filter_rolls_back_the_turn(self):
+        blocked = _completion({'content': None}, finish_reason='content_filter')
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(blocked)):
+            with self.assertRaises(assistant.AssistantError):
+                assistant.run_turn(self.product, state, 'something odd')
+        self.assertEqual(state['messages'], [])
+
+    def test_rate_limit_gives_busy_message_and_keeps_earlier_turns(self):
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(_text('Hi.'))):
+            assistant.run_turn(self.product, state, 'hello')
+        before = list(state['messages'])
+
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(_rate_limit_error())):
+            with self.assertRaisesMessage(assistant.AssistantError, assistant.BUSY_MESSAGE):
+                assistant.run_turn(self.product, state, 'eight hinges')
+        self.assertEqual(state['messages'], before)
+
+    def test_network_error_gives_busy_message(self):
+        failing = mock.Mock()
+        failing.chat.completions.create.side_effect = openai.APIConnectionError(request=mock.Mock())
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=failing):
+            with self.assertRaisesMessage(assistant.AssistantError, assistant.BUSY_MESSAGE):
+                assistant.run_turn(self.product, state, 'eight hinges')
+        self.assertEqual(state['messages'], [])
+
+    def test_running_out_of_tool_rounds_rolls_back(self):
+        calls = [_tool_call('get_draft', {}, f'call_{i}') for i in range(assistant.MAX_TOOL_ROUNDS)]
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(*calls)):
+            with self.assertRaises(assistant.AssistantError):
+                assistant.run_turn(self.product, state, 'loop forever')
+        self.assertEqual(state['messages'], [])
+
+    def test_empty_reply_is_stored_as_okay(self):
+        state = assistant.new_state()
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(_text(''))):
+            reply = assistant.run_turn(self.product, state, 'hello')
+        self.assertEqual(reply, 'Okay.')
+        self.assertEqual(state['messages'][-1]['content'], 'Okay.')
+
+    def test_old_session_format_keeps_draft_and_restarts_conversation(self):
+        old = {'messages': [{'role': 'assistant', 'content': [{'type': 'text', 'text': 'Hi'}]}],
+               'draft': [{'type': 'bom'}]}
+        state = assistant.load_state(old)
+        self.assertEqual(state['messages'], [])
+        self.assertEqual(state['draft'], [{'type': 'bom'}])
+        self.assertEqual(state['format'], assistant.STATE_FORMAT)
+
+
+@override_settings(BOM_ASSISTANT_API_KEY='test-key')
+class AssistantViewTests(TestCase):
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.product = Product.objects.create(product_code='TABLE-01', product_name='Coffee Table')
+        cls.hinge = Resource.objects.create(
+            resource_name='Hinge', category='Hardware', unit='nos', rate=Decimal('50'),
+        )
+
+    def setUp(self):
+        admin = User.objects.create_user(username='admin1', password='x', is_staff=True)
+        self.client.force_login(admin, backend='django.contrib.auth.backends.ModelBackend')
+
+    def _turn(self, text, *responses):
+        with mock.patch.object(assistant, '_client', return_value=_fake_client(*responses)):
+            return self.client.post(
+                reverse('bom:assistant_turn', args=[self.product.pk]),
+                data={'text': text}, content_type='application/json',
+            )
+
+    def _stage_hinges(self):
+        return self._turn(
+            'eight hinges',
+            _tool_call('stage_material', {'resource_id': self.hinge.pk, 'quantity': 8}),
+            _text('Added 8 hinges.'),
+        )
+
+    def test_turn_returns_reply_and_draft(self):
+        data = self._stage_hinges().json()
+        self.assertEqual(data['reply'], 'Added 8 hinges.')
+        self.assertEqual(len(data['draft']), 1)
+
+        page = self.client.get(reverse('bom:list', args=[self.product.pk]))
+        self.assertEqual(page.context['assistant_initial']['log'],
+                         [{'role': 'user', 'text': 'eight hinges'},
+                          {'role': 'assistant', 'text': 'Added 8 hinges.'}])
+
+    def test_voice_is_english_only(self):
+        page = self.client.get(reverse('bom:list', args=[self.product.pk]))
+        self.assertContains(page, "recognition.lang = 'en-IN'")
+        self.assertNotContains(page, 'ta-IN')
+
+    def test_rate_limit_shows_busy_message_not_500(self):
+        self._stage_hinges()
+        response = self._turn('two more', _rate_limit_error())
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['reply'], assistant.BUSY_MESSAGE)
+        self.assertEqual(len(data['draft']), 1)   # draft survives the failed turn
+
+    def test_commit_writes_draft_and_clears_it(self):
+        BOMItem.objects.create(product=self.product, resource=self.hinge, quantity=Decimal('2'))
+        self._stage_hinges()
+        self.client.post(reverse('bom:assistant_commit', args=[self.product.pk]))
+        self.assertEqual(BOMItem.objects.get().quantity, Decimal('8'))   # upserted, not duplicated
+        self.assertNotIn(str(self.product.pk), self.client.session.get('bom_assistant', {}))
+
+    def test_commit_with_stale_row_writes_nothing(self):
+        self._stage_hinges()
+        Resource.objects.filter(pk=self.hinge.pk).update(active=False)
+        self.client.post(reverse('bom:assistant_commit', args=[self.product.pk]))
+        self.assertFalse(BOMItem.objects.exists())
+
+    def test_remove_row_and_reset(self):
+        self._stage_hinges()
+        data = self.client.post(
+            reverse('bom:assistant_remove_row', args=[self.product.pk]),
+            data={'index': 0}, content_type='application/json',
+        ).json()
+        self.assertEqual(data['draft'], [])
+        self.client.post(reverse('bom:assistant_reset', args=[self.product.pk]))
+        self.assertNotIn(str(self.product.pk), self.client.session.get('bom_assistant', {}))
+
+    def test_empty_text_is_rejected(self):
+        response = self.client.post(
+            reverse('bom:assistant_turn', args=[self.product.pk]),
+            data={'text': '  '}, content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @override_settings(BOM_ASSISTANT_API_KEY='')
+    def test_hidden_when_api_key_unset(self):
+        page = self.client.get(reverse('bom:list', args=[self.product.pk]))
+        self.assertNotContains(page, 'Voice Assistant')
+        self.assertNotContains(page, 'assistant-panel')
+        response = self.client.post(
+            reverse('bom:assistant_turn', args=[self.product.pk]),
+            data={'text': 'hi'}, content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 503)

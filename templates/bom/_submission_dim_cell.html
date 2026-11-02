@@ -1,0 +1,16 @@
+{# One dimension cell on the submission review page — value + unit, editable while pending. #}
+<td style="min-width:9rem;">
+    {% if editable %}
+    <div class="input-group input-group-sm">
+        <input type="number" name="{{ name }}_{{ line.pk }}" value="{{ value|default_if_none:'' }}"
+               step="any" min="0" class="form-control">
+        <select name="{{ name }}_unit_{{ line.pk }}" class="form-select" style="max-width:4.5rem;">
+            {% for code, label in unit_choices %}
+            <option value="{{ code }}"{% if code == unit %} selected{% endif %}>{{ code }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% elif value %}
+    {{ value|floatformat:"-4" }} <span class="text-muted" style="font-size:0.72rem;">{{ unit }}</span>
+    {% else %}—{% endif %}
+</td>

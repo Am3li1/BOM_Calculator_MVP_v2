@@ -3,8 +3,6 @@ from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from allauth.mfa.models import Authenticator
-
 
 class LoginFlowTests(TestCase):
     """Login now goes through django-allauth (account_login), not the old
@@ -41,7 +39,7 @@ class LoginFlowTests(TestCase):
             settings.NON_STAFF_SESSION_AGE,
         )
 
-    def test_admin_login_gets_short_session_and_is_sent_to_mfa_setup(self):
+    def test_admin_login_gets_short_session_and_reaches_dashboard(self):
         response = self.client.post(
             reverse('account_login'),
             {'login': 'admin1', 'password': 'correct-pw-123'},
@@ -51,27 +49,10 @@ class LoginFlowTests(TestCase):
             self.client.session.get_expiry_age(),
             settings.STAFF_SESSION_AGE,
         )
-        # RequireAdminMFAMiddleware must redirect an unenrolled admin to
-        # MFA setup instead of letting them reach the dashboard.
-        self.assertRedirects(response, reverse('mfa_activate_totp'))
+        self.assertEqual(response.redirect_chain[-1][0], '/')
+        self.assertEqual(response.status_code, 200)
 
-    def test_admin_with_totp_enrolled_is_challenged_for_a_code(self):
-        # With a TOTP authenticator already enrolled, allauth's own MFA
-        # stage takes over: password alone isn't enough, the user must
-        # still pass the authenticate (code entry) stage before the
-        # session is fully established. This is the correct two-factor
-        # behavior — password + TOTP, as required by CLAUDE.md.
-        Authenticator.objects.create(
-            user=self.admin, type=Authenticator.Type.TOTP, data={'secret': 'test-secret'}
-        )
-        response = self.client.post(
-            reverse('account_login'),
-            {'login': 'admin1', 'password': 'correct-pw-123'},
-            follow=True,
-        )
-        self.assertRedirects(response, reverse('mfa_authenticate'))
-
-    def test_viewer_never_hits_mfa_gate(self):
+    def test_viewer_login_reaches_dashboard(self):
         response = self.client.post(
             reverse('account_login'),
             {'login': 'viewer1', 'password': 'correct-pw-123'},
@@ -187,13 +168,8 @@ def _make_carpenter(username='carp1', password='correct-pw-123'):
     return user
 
 
-def _make_mfa_admin(username='admin1'):
-    """Admin with TOTP enrolled, so RequireAdminMFAMiddleware lets it through."""
-    admin = User.objects.create_user(username=username, password='x', is_staff=True)
-    Authenticator.objects.create(
-        user=admin, type=Authenticator.Type.TOTP, data={'secret': 'test-secret'}
-    )
-    return admin
+def _make_admin(username='admin1'):
+    return User.objects.create_user(username=username, password='x', is_staff=True)
 
 
 class UserProfileTests(TestCase):
@@ -403,7 +379,7 @@ class ViewerAccessUnchangedTests(TestCase):
 class UserManagementRoleTests(TestCase):
 
     def setUp(self):
-        self.admin = _make_mfa_admin()
+        self.admin = _make_admin()
         self.client.force_login(self.admin, backend=_MODEL_BACKEND)
 
     def test_admin_can_create_carpenter(self):

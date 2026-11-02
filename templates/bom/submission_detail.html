@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="content-card p-4 mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div>
+            <h5 class="mb-1" style="font-weight:700;">
+                {{ product.product_code }}
+                {% if submission.status == 'pending' %}
+                <span class="badge bg-warning text-dark ms-1" style="font-size:0.7rem;">{{ submission.get_status_display }}</span>
+                {% elif submission.status == 'approved' %}
+                <span class="badge bg-success ms-1" style="font-size:0.7rem;">{{ submission.get_status_display }}</span>
+                {% elif submission.status == 'open' and submission.is_expired %}
+                <span class="badge bg-secondary ms-1" style="font-size:0.7rem;">Expired</span>
+                {% elif submission.status == 'open' %}
+                <span class="badge bg-info text-dark ms-1" style="font-size:0.7rem;">{{ submission.get_status_display }}</span>
+                {% else %}
+                <span class="badge bg-secondary ms-1" style="font-size:0.7rem;">{{ submission.get_status_display }}</span>
+                {% endif %}
+            </h5>
+            <div class="text-muted" style="font-size:0.9rem;">{{ product.product_name }}</div>
+            <div class="text-muted mt-2" style="font-size:0.82rem;">
+                Carpenter: <strong>{{ submission.carpenter_name|default:"—" }}</strong>
+                {% if submission.carpenter_phone %} · {{ submission.carpenter_phone }}{% endif %}
+                · Language: {{ submission.get_language_display }}<br>
+                Sent {{ submission.created_at|date:"d M Y, H:i" }}{% if submission.created_by %} by {{ submission.created_by.username }}{% endif %}
+                {% if submission.submitted_at %} · Submitted {{ submission.submitted_at|date:"d M Y, H:i" }}{% endif %}
+                {% if submission.reviewed_at %}<br>Reviewed {{ submission.reviewed_at|date:"d M Y, H:i" }}{% if submission.reviewed_by %} by {{ submission.reviewed_by.username }}{% endif %}{% endif %}
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'bom:submission_list' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-list-ul me-1"></i> All submissions
+            </a>
+            <a href="{% url 'bom:list' product_pk=product.pk %}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-diagram-3 me-1"></i> BOM
+            </a>
+        </div>
+    </div>
+
+    {% if submission.note %}
+    <div class="alert alert-secondary mt-3 mb-0" style="font-size:0.9rem;">
+        <i class="bi bi-chat-left-text me-1"></i> <strong>Carpenter's note:</strong>
+        {{ submission.note|linebreaksbr }}
+    </div>
+    {% endif %}
+    {% if submission.review_note %}
+    <div class="alert alert-secondary mt-3 mb-0" style="font-size:0.9rem;">
+        <i class="bi bi-person-check me-1"></i> <strong>Review note:</strong>
+        {{ submission.review_note|linebreaksbr }}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Link sharing (open links only) -->
+{% if link_url %}
+<div class="content-card p-4 mb-4">
+    {% if submission.is_expired %}
+    <p class="text-muted mb-0">
+        <i class="bi bi-clock-history me-1"></i>
+        This link expired on {{ submission.expires_at|date:"d M Y, H:i" }} without being used.
+        Create a new one from the <a href="{% url 'bom:list' product_pk=product.pk %}">BOM page</a>.
+    </p>
+    {% else %}
+    <label class="form-label fw-semibold">Link for the carpenter</label>
+    <div class="input-group mb-2">
+        <input type="text" class="form-control font-mono" id="link-url" value="{{ link_url }}" readonly>
+        <button type="button" class="btn btn-outline-primary" id="copy-link">
+            <i class="bi bi-clipboard me-1"></i> <span>Copy</span>
+        </button>
+        <a href="{{ link_url }}" target="_blank" rel="noopener" class="btn btn-outline-secondary" title="Open the carpenter form in a new tab">
+            <i class="bi bi-box-arrow-up-right me-1"></i> Open
+        </a>
+    </div>
+    {% if link_is_local %}
+    <div class="alert alert-warning py-2 mb-2" style="font-size:0.85rem;">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        This link points to your own computer ({{ request.get_host }}). WhatsApp won't make it tappable and a carpenter's phone can't open it.
+        Links created on the live site (bom.lumelabs.dev) work normally.
+    </div>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a href="{{ whatsapp_url }}" target="_blank" rel="noopener" class="btn btn-success btn-sm">
+            <i class="bi bi-whatsapp me-1"></i> Send on WhatsApp
+        </a>
+        <form method="post" action="{% url 'bom:submission_revoke' pk=submission.pk %}"
+              onsubmit="return confirm('Revoke this link? The carpenter will no longer be able to use it.')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-x-circle me-1"></i> Revoke link
+            </button>
+        </form>
+        <span class="text-muted ms-auto" style="font-size:0.8rem;">
+            Works once, until {{ submission.expires_at|date:"d M Y, H:i" }}. Anyone with the link can submit — share it only with the carpenter.
+        </span>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if errors %}
+<div class="alert alert-danger">
+    <div class="fw-semibold mb-1">Nothing was approved — fix these lines first:</div>
+    <ul class="mb-0 ps-3">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if submission.status != 'open' and submission.status != 'revoked' %}
+<form method="post" action="{% url 'bom:submission_approve' pk=submission.pk %}" id="approve-form">
+    {% csrf_token %}
+
+    <!-- Materials -->
+    <div class="content-card mb-4">
+        <div class="card-header">
+            <i class="bi bi-diagram-3 me-2 text-warning"></i> Materials
+            <span class="text-muted ms-1" style="font-size:0.8rem;">→ Standard BOM</span>
+        </div>
+        {% if bom_rows %}
+        <div class="table-responsive">
+        <table class="table mb-0 align-middle">
+            <thead>
+                <tr>
+                    {% if editable %}<th class="ps-4" style="width:3rem;">Add</th>{% endif %}
+                    <th {% if not editable %}class="ps-4"{% endif %}>Resource</th>
+                    <th class="text-end">Carpenter qty</th>
+                    <th class="text-end">Current BOM qty</th>
+                    <th style="width:10rem;">Approve qty</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in bom_rows %}
+                {% with line=row.line %}
+                <tr>
+                    {% if editable %}
+                    <td class="ps-4"><input type="checkbox" class="form-check-input" name="include_{{ line.pk }}" {% if row.include %}checked{% endif %}></td>
+                    {% endif %}
+                    <td {% if not editable %}class="ps-4"{% endif %}>
+                        {{ line.resource.resource_name }}
+                        {% if line.resource.name_ta %}<span class="text-muted" style="font-size:0.8rem;">· {{ line.resource.name_ta }}</span>{% endif %}
+                        <div class="text-muted" style="font-size:0.75rem;">{{ line.resource.category }}</div>
+                    </td>
+                    <td class="text-end font-mono">{{ line.quantity|floatformat:"-4" }} <span class="text-muted" style="font-size:0.75rem;">{{ line.resource.unit }}</span></td>
+                    <td class="text-end font-mono">
+                        {% if row.current_qty is not None %}
+                            {{ row.current_qty|floatformat:"-4" }}
+                            {% if row.current_qty != line.quantity %}<i class="bi bi-arrow-left-right text-warning ms-1" title="Different from the carpenter's quantity — approving replaces it"></i>{% endif %}
+                        {% else %}
+                            <span class="badge bg-info text-dark" style="font-size:0.7rem;">New</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if editable %}
+                        <input type="number" name="quantity_{{ line.pk }}" value="{{ row.values.quantity|default_if_none:'' }}"
+                               step="any" min="0" class="form-control form-control-sm text-end">
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endwith %}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted p-4 mb-0" style="font-size:0.875rem;">No materials in this submission.</p>
+        {% endif %}
+    </div>
+
+    <!-- Dimensions -->
+    <div class="content-card mb-4">
+        <div class="card-header">
+            <i class="bi bi-rulers me-2 text-info"></i> Parts with measurements
+            <span class="text-muted ms-1" style="font-size:0.8rem;">→ Dimensional BOM</span>
+        </div>
+        {% if dim_rows %}
+        <div class="table-responsive">
+        <table class="table mb-0 align-middle" style="font-size:0.85rem;">
+            <thead>
+                <tr>
+                    {% if editable %}<th class="ps-4" style="width:3rem;">Add</th>{% endif %}
+                    <th {% if not editable %}class="ps-4"{% endif %}>Part / Material</th>
+                    <th>Width</th>
+                    <th>Breadth</th>
+                    <th>Length</th>
+                    <th>Height</th>
+                    <th style="width:5rem;">Pcs</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in dim_rows %}
+                {% with line=row.line v=row.values %}
+                <tr>
+                    {% if editable %}
+                    <td class="ps-4"><input type="checkbox" class="form-check-input" name="include_{{ line.pk }}" {% if row.include %}checked{% endif %}></td>
+                    {% endif %}
+                    <td {% if not editable %}class="ps-4"{% endif %} style="min-width:12rem;">
+                        {% if editable %}
+                        <input type="text" name="part_{{ line.pk }}" value="{{ v.part }}" class="form-control form-control-sm mb-1" maxlength="200">
+                        {% else %}<div class="fw-semibold">{{ line.part_name }}</div>{% endif %}
+                        <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">{{ line.resource.resource_name }}</span>
+                        {% if row.already_in_bom %}
+                        <div class="text-warning" style="font-size:0.72rem;"><i class="bi bi-exclamation-triangle me-1"></i>Already in BOM — approving adds another entry</div>
+                        {% endif %}
+                    </td>
+                    {% include "bom/_submission_dim_cell.html" with name="width" value=v.width unit=v.width_unit %}
+                    {% include "bom/_submission_dim_cell.html" with name="breadth" value=v.breadth unit=v.breadth_unit %}
+                    {% include "bom/_submission_dim_cell.html" with name="length" value=v.length unit=v.length_unit %}
+                    {% include "bom/_submission_dim_cell.html" with name="height" value=v.height unit=v.height_unit %}
+                    <td>
+                        {% if editable %}
+                        <input type="number" name="pieces_{{ line.pk }}" value="{{ v.pieces|default_if_none:'' }}" step="1" min="1" class="form-control form-control-sm">
+                        {% else %}{{ line.pieces }}{% endif %}
+                    </td>
+                </tr>
+                {% endwith %}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted p-4 mb-0" style="font-size:0.875rem;">No parts in this submission.</p>
+        {% endif %}
+    </div>
+
+    {% if editable %}
+    <div class="content-card p-4 mb-4">
+        <label class="form-label fw-semibold" for="review-note">Review note (optional)</label>
+        <textarea name="review_note" id="review-note" class="form-control mb-3" rows="2"></textarea>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-success">
+                <i class="bi bi-check2-circle me-1"></i> Approve ticked lines into BOM
+            </button>
+            <button type="submit" class="btn btn-outline-danger" form="reject-form"
+                    onclick="document.getElementById('reject-note').value = document.getElementById('review-note').value; return confirm('Reject this submission? Nothing will be added to the BOM.');">
+                <i class="bi bi-x-circle me-1"></i> Reject
+            </button>
+        </div>
+        <div class="form-text">
+            Materials already in the BOM get their quantity replaced. Parts are added as new dimension entries.
+        </div>
+    </div>
+    {% endif %}
+</form>
+
+{% if editable %}
+<form method="post" action="{% url 'bom:submission_reject' pk=submission.pk %}" id="reject-form">
+    {% csrf_token %}
+    <input type="hidden" name="review_note" id="reject-note">
+</form>
+{% endif %}
+{% endif %}
+
+{% if link_url %}
+<script>
+(function () {
+    var btn = document.getElementById('copy-link');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        var input = document.getElementById('link-url');
+        var done = function () { btn.querySelector('span').textContent = 'Copied'; };
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(input.value).then(done);
+        } else {
+            input.select();
+            document.execCommand('copy');
+            done();
+        }
+    });
+})();
+</script>
+{% endif %}
+
+{% endblock %}

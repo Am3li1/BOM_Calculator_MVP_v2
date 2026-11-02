@@ -1,0 +1,67 @@
+<!-- templates/carpenter/link_base.html — standalone layout for the public
+     magic-link pages. No sidebar and no nav: the person opening the link
+     may have no account, and must never be shown links into the rest of
+     the app. -->
+<!DOCTYPE html>
+<html lang="{{ lang|default:'en' }}" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ page_title }} — {{ product.product_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+Tamil:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0A0C10;
+            --surface: #12151B;
+            --surface-raised: #1A1E27;
+            --border: #232833;
+            --text: #F5F6F8;
+            --text-muted: #7C8494;
+            --accent: #2F7DFF;
+        }
+        * { font-family: 'IBM Plex Sans', 'Noto Sans Tamil', sans-serif; }
+        body { background: var(--bg); color: var(--text); min-height: 100vh; }
+        .link-wrapper { max-width: 760px; margin: 0 auto; padding: 16px; }
+        .link-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .link-card h2 { font-size: 1rem; font-weight: 700; margin-bottom: 12px; }
+        .row-card {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 10px;
+        }
+        .form-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 2px; }
+        .form-control, .form-select { font-size: 1rem; }  /* ≥16px stops iOS zoom-on-focus */
+        .combo-dropdown {
+            z-index: 1050; max-height: 260px; overflow-y: auto; display: none; top: 100%;
+        }
+    </style>
+</head>
+<body>
+<div class="link-wrapper">
+    <div class="d-flex align-items-center gap-2 mb-3 mt-2">
+        <i class="bi bi-hammer text-primary" style="font-size:1.5rem;"></i>
+        <div>
+            <div style="font-weight:700;">{{ product.product_name }}</div>
+            <div class="text-muted" style="font-size:0.8rem;">
+                {{ product.product_code }}{% if carpenter_name %} · {{ carpenter_name }}{% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% block body %}{% endblock %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

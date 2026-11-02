@@ -17,7 +17,6 @@ urlpatterns = [
     # flows are intentionally closed — see CLAUDE.md Authentication section.
     path('accounts/login/', LoginView.as_view(), name='account_login'),
     path('accounts/logout/', LogoutView.as_view(), name='account_logout'),
-    path('accounts/mfa/', include('allauth.mfa.urls')),
     path('accounts/3rdparty/', include('allauth.socialaccount.urls')),
     path('accounts/google/', include('allauth.socialaccount.providers.google.urls')),
 

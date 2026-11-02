@@ -1,10 +1,16 @@
+import json
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 from apps.core.decorators import admin_required, not_carpenter
 from django.contrib import messages
 
 from apps.products.models import Product
+from . import assistant
 from .models import BOMItem
+from .services import LineError, apply_lines, describe_result
 
 
 @login_required
@@ -33,6 +39,8 @@ def bom_list(request, product_pk):
     total_dimensional_cost = sum(part.cost for part in wood_parts)
     grand_total          = total_bom_cost + total_dimensional_cost
 
+    from apps.carpenter.models import BOMSubmission
+
     context = {
         'page_title': f'BOM — {product.product_code}',
         'product': product,
@@ -41,8 +49,138 @@ def bom_list(request, product_pk):
         'total_bom_cost': total_bom_cost,
         'total_dimensional_cost': total_dimensional_cost,
         'grand_total': grand_total,
+        'pending_for_product': BOMSubmission.objects.filter(
+            product=product, status=BOMSubmission.STATUS_PENDING
+        ).count(),
+        'expiry_days_default': BOMSubmission.DEFAULT_EXPIRY_DAYS,
+        'assistant_enabled': assistant.is_configured(),
     }
+    if context['assistant_enabled']:
+        state = _assistant_state(request, product)
+        context['assistant_initial'] = {
+            'log': _assistant_log(state),
+            'draft': _draft_payload(state),
+        }
     return render(request, 'bom/list.html', context)
+
+
+# ── Voice assistant ─────────────────────────────────────────────────
+# Conversation + draft live in the session, per product. See
+# apps/bom/assistant.py — nothing reaches the BOM until assistant_commit.
+
+_ASSISTANT_SESSION_KEY = 'bom_assistant'
+MAX_UTTERANCE_LENGTH = 2000
+
+
+def _assistant_state(request, product):
+    states = request.session.get(_ASSISTANT_SESSION_KEY, {})
+    return assistant.load_state(states.get(str(product.pk)))
+
+
+def _save_assistant_state(request, product, state):
+    states = request.session.get(_ASSISTANT_SESSION_KEY, {})
+    if state is None:
+        states.pop(str(product.pk), None)
+    else:
+        states[str(product.pk)] = state
+    request.session[_ASSISTANT_SESSION_KEY] = states
+
+
+def _assistant_log(state):
+    """What the admin said and what the assistant said back — for
+    redrawing the chat after a page reload. Tool traffic is skipped."""
+    log = []
+    for message in state['messages']:
+        if message['role'] in ('user', 'assistant') and message.get('content'):
+            log.append({'role': message['role'], 'text': message['content']})
+    return log
+
+
+def _draft_payload(state):
+    return [
+        {'type': row['type'], 'text': assistant.describe_draft_row(row)}
+        for row in state['draft']
+    ]
+
+
+@login_required
+@not_carpenter
+@admin_required
+@require_POST
+def assistant_turn(request, product_pk):
+    product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
+    if not assistant.is_configured():
+        return JsonResponse({'error': 'The assistant is not set up on this server.'}, status=503)
+
+    try:
+        text = str(json.loads(request.body or b'{}').get('text', '')).strip()
+    except (ValueError, AttributeError):
+        text = ''
+    if not text:
+        return JsonResponse({'error': 'I did not catch that. Please try again.'}, status=400)
+    text = text[:MAX_UTTERANCE_LENGTH]
+
+    state = _assistant_state(request, product)
+    try:
+        reply = assistant.run_turn(product, state, text)
+        status = 200
+    except assistant.AssistantError as e:
+        reply, status = str(e), 200
+        # Draft changes made before the failure are kept; the
+        # conversation itself was rolled back to the last good turn.
+    _save_assistant_state(request, product, state)
+
+    return JsonResponse({'reply': reply, 'draft': _draft_payload(state)}, status=status)
+
+
+@login_required
+@not_carpenter
+@admin_required
+@require_POST
+def assistant_remove_row(request, product_pk):
+    product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
+    state = _assistant_state(request, product)
+    try:
+        index = int(json.loads(request.body or b'{}').get('index'))
+        state['draft'].pop(index)
+    except (ValueError, TypeError, IndexError, AttributeError):
+        return JsonResponse({'error': 'No such row.'}, status=400)
+    _save_assistant_state(request, product, state)
+    return JsonResponse({'draft': _draft_payload(state)})
+
+
+@login_required
+@not_carpenter
+@admin_required
+@require_POST
+def assistant_reset(request, product_pk):
+    product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
+    _save_assistant_state(request, product, None)
+    return JsonResponse({'draft': [], 'log': []})
+
+
+@login_required
+@not_carpenter
+@admin_required
+@require_POST
+def assistant_commit(request, product_pk):
+    product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
+    state = _assistant_state(request, product)
+
+    if not state['draft']:
+        messages.error(request, 'The assistant draft is empty — nothing to save.')
+        return redirect('bom:list', product_pk=product.pk)
+
+    try:
+        lines = assistant.draft_to_lines(state['draft'])
+    except LineError as e:
+        messages.error(request, f'Nothing was saved. {e}')
+        return redirect('bom:list', product_pk=product.pk)
+
+    result = apply_lines(product, lines)
+    _save_assistant_state(request, product, None)
+    messages.success(request, f'Assistant draft saved — {describe_result(*result)}.')
+    return redirect('bom:list', product_pk=product.pk)
 
 
 @login_required
