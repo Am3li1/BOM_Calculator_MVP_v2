@@ -21,8 +21,11 @@ def _new_token():
 
 class BOMSubmission(models.Model):
     """
-    One magic link sent to a carpenter for one product, and whatever they
-    submit through it.
+    One magic link sent to a carpenter, and whatever they submit through
+    it. A link is either for one existing product (sent from its BOM
+    page) or open (product is None): the carpenter then names a new
+    product, optionally starting from a copy of an existing one
+    (based_on). Approving an open submission creates the product.
 
     Status flow:
         open     → link sent, waiting for the carpenter
@@ -55,7 +58,20 @@ class BOMSubmission(models.Model):
     product = models.ForeignKey(
         'products.Product',
         on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name='submissions',
+        help_text='Empty for a new-product link until the submission is approved.',
+    )
+    new_product_name = models.CharField(
+        max_length=255, blank=True,
+        help_text='Name the carpenter gave the new product (open links only).',
+    )
+    based_on = models.ForeignKey(
+        'products.Product',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        help_text='Existing product the carpenter copied the list from, if any.',
     )
     token = models.CharField(max_length=64, unique=True, default=_new_token, editable=False)
 
@@ -92,12 +108,22 @@ class BOMSubmission(models.Model):
 
     def __str__(self):
         who = self.carpenter_name or 'carpenter'
-        return f'{self.product.product_code} — {who} ({self.get_status_display()})'
+        return f'{self.product_label} — {who} ({self.get_status_display()})'
 
     def save(self, *args, **kwargs):
         if not self.expires_at:
             self.expires_at = timezone.now() + timedelta(days=self.DEFAULT_EXPIRY_DAYS)
         super().save(*args, **kwargs)
+
+    @property
+    def is_new_product(self):
+        return self.product_id is None
+
+    @property
+    def product_label(self):
+        if self.product_id:
+            return self.product.product_code
+        return f'New: {self.new_product_name}' if self.new_product_name else 'New product'
 
     @property
     def is_expired(self):

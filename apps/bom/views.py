@@ -222,7 +222,8 @@ def bom_add(request, product_pk):
                     quantity=qty,
                 )
                 messages.success(request, f'"{resource.resource_name}" added to BOM.')
-                return redirect('bom:list', product_pk=product.pk)
+                # Back to a blank form, ready for the next item.
+                return redirect('bom:add', product_pk=product.pk)
 
             except Resource.DoesNotExist:
                 messages.error(request, 'Invalid resource selected.')
@@ -372,7 +373,8 @@ def woodpart_add(request, product_pk):
                     request,
                     f'Dimension entry "{part_obj.name}" added successfully.'
                 )
-                return redirect('bom:list', product_pk=product.pk)
+                # Back to a blank form, ready for the next entry.
+                return redirect('bom:wood_add', product_pk=product.pk)
 
             except Resource.DoesNotExist:
                 messages.error(request, 'Invalid resource selected.')

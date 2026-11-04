@@ -23,6 +23,7 @@ urlpatterns = [
 
     # Carpenter submissions (magic link → admin review → BOM)
     path('submissions/',                           views_submissions.submission_list,        name='submission_list'),
+    path('submissions/new/',                       views_submissions.submission_link_create, name='submission_link_create_new'),
     path('<int:product_pk>/submissions/new/',      views_submissions.submission_link_create, name='submission_link_create'),
     path('submissions/<int:pk>/',                  views_submissions.submission_detail,      name='submission_detail'),
     path('submissions/<int:pk>/approve/',          views_submissions.submission_approve,     name='submission_approve'),

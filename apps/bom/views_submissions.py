@@ -22,6 +22,7 @@ from django.views.decorators.http import require_POST
 from apps.carpenter.models import BOMSubmission, SubmissionLine
 from apps.core.decorators import admin_required, not_carpenter
 from apps.products.models import Product
+from apps.products.views import _generate_unique_product_code
 from apps.resources.models import DIMENSIONAL_UNIT_CHOICES
 
 from .models import BOMItem, WoodPart
@@ -53,14 +54,15 @@ def _is_local_link(link):
 
 
 def _whatsapp_url(submission, link):
+    product = submission.product
     if submission.language == 'ta':
         greeting = f'வணக்கம் {submission.carpenter_name},' if submission.carpenter_name else 'வணக்கம்,'
-        text = (f'{greeting} "{submission.product.product_name}" க்குத் தேவையான '
-                f'பொருட்களை இந்த இணைப்பில் நிரப்பவும்:\n{link}')
+        what = f'"{product.product_name}" க்குத்' if product else 'புதிய பொருளுக்குத்'
+        text = f'{greeting} {what} தேவையான பொருட்களை இந்த இணைப்பில் நிரப்பவும்:\n{link}'
     else:
         greeting = f'Hi {submission.carpenter_name},' if submission.carpenter_name else 'Hi,'
-        text = (f'{greeting} please fill in the materials needed for '
-                f'"{submission.product.product_name}" here:\n{link}')
+        what = f'"{product.product_name}"' if product else 'a new product'
+        text = f'{greeting} please fill in the materials needed for {what} here:\n{link}'
 
     digits = re.sub(r'\D', '', submission.carpenter_phone or '')
     if len(digits) == 10:
@@ -72,8 +74,13 @@ def _whatsapp_url(submission, link):
 @not_carpenter
 @admin_required
 @require_POST
-def submission_link_create(request, product_pk):
-    product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
+def submission_link_create(request, product_pk=None):
+    """With product_pk: a link to fill in that product's list. Without:
+    an open link — the carpenter names a new product, optionally
+    copying a similar one, and approval creates it."""
+    product = None
+    if product_pk is not None:
+        product = get_object_or_404(Product, pk=product_pk, is_deleted=False)
 
     try:
         days = int(request.POST.get('expiry_days') or BOMSubmission.DEFAULT_EXPIRY_DAYS)
@@ -133,6 +140,7 @@ def submission_list(request):
         'status': status,
         'status_choices': BOMSubmission.STATUS_CHOICES,
         'product': product,
+        'expiry_days_default': BOMSubmission.DEFAULT_EXPIRY_DAYS,
     })
 
 
@@ -140,12 +148,14 @@ def _render_detail(request, submission, posted=None, errors=None):
     product = submission.product
     lines = list(submission.lines.select_related('resource'))
 
-    current_qty = dict(
-        BOMItem.objects.filter(product=product).values_list('resource_id', 'quantity')
-    )
-    existing_dims = set(
-        WoodPart.objects.filter(product=product).values_list('resource_id', 'part_name')
-    )
+    current_qty, existing_dims = {}, set()
+    if product:
+        current_qty = dict(
+            BOMItem.objects.filter(product=product).values_list('resource_id', 'quantity')
+        )
+        existing_dims = set(
+            WoodPart.objects.filter(product=product).values_list('resource_id', 'part_name')
+        )
 
     rows = []
     for line in lines:
@@ -175,10 +185,12 @@ def _render_detail(request, submission, posted=None, errors=None):
         rows.append(row)
 
     context = {
-        'page_title': f'Carpenter Submission — {product.product_code}',
+        'page_title': f'Carpenter Submission — {submission.product_label}',
         'submission': submission,
         'editable': submission.status == BOMSubmission.STATUS_PENDING,
         'product': product,
+        'new_product_name': (posted.get('new_product_name', '') if posted is not None
+                             else submission.new_product_name),
         'bom_rows': [r for r in rows if r['line'].line_type == SubmissionLine.TYPE_BOM],
         'dim_rows': [r for r in rows if r['line'].line_type == SubmissionLine.TYPE_DIMENSION],
         'unit_choices': DIMENSIONAL_UNIT_CHOICES,
@@ -196,7 +208,9 @@ def _render_detail(request, submission, posted=None, errors=None):
 @not_carpenter
 @admin_required
 def submission_detail(request, pk):
-    submission = get_object_or_404(BOMSubmission.objects.select_related('product'), pk=pk)
+    submission = get_object_or_404(
+        BOMSubmission.objects.select_related('product', 'based_on'), pk=pk,
+    )
     return _render_detail(request, submission)
 
 
@@ -205,16 +219,24 @@ def submission_detail(request, pk):
 @admin_required
 @require_POST
 def submission_approve(request, pk):
-    submission = get_object_or_404(BOMSubmission.objects.select_related('product'), pk=pk)
+    submission = get_object_or_404(
+        BOMSubmission.objects.select_related('product', 'based_on'), pk=pk,
+    )
     if submission.status != BOMSubmission.STATUS_PENDING:
         messages.error(request, 'Only submissions waiting for review can be approved.')
         return redirect('bom:submission_detail', pk=pk)
-    if submission.product.is_deleted:
+    if submission.product and submission.product.is_deleted:
         messages.error(request, 'This product has been deleted.')
         return redirect('bom:submission_detail', pk=pk)
 
     post = request.POST
     cleaned, errors = [], []
+
+    new_product_name = ''
+    if submission.is_new_product:
+        new_product_name = ' '.join(post.get('new_product_name', '').split())[:255]
+        if not new_product_name:
+            errors.append('Enter a name for the new product.')
     for line in submission.lines.select_related('resource'):
         if post.get(f'include_{line.pk}') != 'on':
             continue
@@ -250,15 +272,31 @@ def submission_approve(request, pk):
         if locked.status != BOMSubmission.STATUS_PENDING:
             messages.error(request, 'This submission was already reviewed.')
             return redirect('bom:submission_detail', pk=pk)
-        result = apply_lines(submission.product, cleaned)
+        product = submission.product
+        if product is None:
+            # Code generated the same way as Products → Add. A copied
+            # product also inherits its HSN / GST settings.
+            template = submission.based_on
+            product = Product.objects.create(
+                product_name=new_product_name,
+                product_code=_generate_unique_product_code(new_product_name),
+                **({'hsn_code': template.hsn_code, 'gst_rate': template.gst_rate}
+                   if template else {}),
+            )
+            locked.product = product
+            locked.new_product_name = new_product_name
+        result = apply_lines(product, cleaned)
         locked.status = BOMSubmission.STATUS_APPROVED
         locked.reviewed_by = request.user
         locked.reviewed_at = timezone.now()
         locked.review_note = post.get('review_note', '').strip()
-        locked.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'review_note'])
+        locked.save(update_fields=['product', 'new_product_name', 'status',
+                                   'reviewed_by', 'reviewed_at', 'review_note'])
 
-    messages.success(request, f'Submission approved — {describe_result(*result)}.')
-    return redirect('bom:list', product_pk=submission.product.pk)
+    created = f'Product "{product.product_name}" ({product.product_code}) created, ' \
+        if submission.is_new_product else ''
+    messages.success(request, f'Submission approved — {created}{describe_result(*result)}.')
+    return redirect('bom:list', product_pk=product.pk)
 
 
 @login_required

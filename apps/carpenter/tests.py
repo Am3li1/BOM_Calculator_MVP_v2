@@ -340,3 +340,129 @@ class SubmissionReviewTests(_SubmissionFixtures):
                     reverse('bom:submission_approve', args=[submission.pk])):
             self.assertEqual(self.client.post(url).status_code, 403)
         self.assertFalse(BOMItem.objects.exists())
+
+
+class ProductLibraryAndNewProductTests(_SubmissionFixtures):
+    """Copying a similar product's list, and open links that create a
+    new product on approval."""
+
+    def setUp(self):
+        BOMItem.objects.create(product=self.product, resource=self.hinge, quantity=Decimal('4.5000'))
+        WoodPart.objects.create(
+            product=self.product, resource=self.teak, part_name='Leg',
+            width=Decimal('2'), breadth=Decimal('2'), length=Decimal('1.5'),
+            width_unit='in', breadth_unit='in', length_unit='ft', pieces=4,
+        )
+        Product.objects.filter(pk=self.product.pk).update(hsn_code='9403', gst_rate=Decimal('12.00'))
+
+    def _open_submission(self, **kwargs):
+        return BOMSubmission.objects.create(product=None, **kwargs)
+
+    def test_library_lists_products_with_quantities_but_no_rates(self):
+        response = self.client.get(self._link(self._open_submission()))
+        library = response.context['product_library']
+        self.assertEqual(len(library), 1)
+        entry = library[0]
+        self.assertEqual(entry['name'], 'Coffee Table')
+        self.assertEqual(entry['bom'], [{'resource': self.hinge.pk, 'quantity': '4.5'}])
+        self.assertEqual(entry['dim'][0]['part'], 'Leg')
+        self.assertEqual(entry['dim'][0]['pieces'], '4')
+
+        content = response.content.decode()
+        self.assertNotIn('4321', content)
+        self.assertNotIn('87.65', content)
+        self.assertNotIn('"rate"', content)
+
+    def test_library_leaves_out_empty_deleted_and_inactive(self):
+        Product.objects.create(product_code='EMPTY', product_name='Empty Shelf')
+        gone = Product.objects.create(product_code='GONE', product_name='Old Bed', is_deleted=True)
+        BOMItem.objects.create(product=gone, resource=self.hinge, quantity=1)
+        self.hinge.active = False
+        self.hinge.save()
+        library = self.client.get(self._link(self._open_submission())).context['product_library']
+        self.assertEqual([p['name'] for p in library], ['Coffee Table'])
+        self.assertEqual(library[0]['bom'], [])
+
+    def test_open_link_needs_a_product_name(self):
+        submission = self._open_submission()
+        response = self.client.post(self._link(submission), self._valid_post())
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Enter the product name.', response.context['errors'])
+        self.assertFalse(SubmissionLine.objects.exists())
+
+    def test_open_link_submit_records_name_and_copied_product(self):
+        submission = self._open_submission()
+        self.client.post(self._link(submission), self._valid_post(
+            new_product_name='  Coffee   Table Large ', based_on=str(self.product.pk),
+        ))
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, BOMSubmission.STATUS_PENDING)
+        self.assertEqual(submission.new_product_name, 'Coffee Table Large')
+        self.assertEqual(submission.based_on, self.product)
+        self.assertIsNone(submission.product)
+
+    def test_product_link_ignores_new_product_name(self):
+        submission = self._submission()
+        self.client.post(self._link(submission), self._valid_post(new_product_name='Something else'))
+        submission.refresh_from_db()
+        self.assertEqual(submission.new_product_name, '')
+        self.assertEqual(submission.product, self.product)
+
+    def test_admin_creates_open_link(self):
+        admin = _make_admin()
+        self.client.force_login(admin, backend=_MODEL_BACKEND)
+        response = self.client.post(reverse('bom:submission_link_create_new'),
+                                    {'carpenter_name': 'Murugan', 'language': 'en'})
+        submission = BOMSubmission.objects.get()
+        self.assertIsNone(submission.product)
+        self.assertRedirects(response, reverse('bom:submission_detail', args=[submission.pk]))
+        detail = self.client.get(response.url)
+        self.assertContains(detail, 'a%20new%20product')     # WhatsApp text
+        self.assertContains(self.client.get(reverse('bom:submission_list')), 'New product')
+
+    def test_approve_open_submission_creates_product(self):
+        submission = self._open_submission()
+        self.client.post(self._link(submission), self._valid_post(
+            new_product_name='Coffee Table Large', based_on=str(self.product.pk),
+        ))
+        admin = _make_admin()
+        self.client.force_login(admin, backend=_MODEL_BACKEND)
+
+        data = {'new_product_name': 'Coffee Table XL', 'review_note': ''}
+        for line in submission.lines.all():
+            data[f'include_{line.pk}'] = 'on'
+            data.update({
+                f'quantity_{line.pk}': str(line.quantity or ''),
+                f'part_{line.pk}': line.part_name,
+                f'width_{line.pk}': '24', f'breadth_{line.pk}': '1', f'length_{line.pk}': '3',
+                f'width_unit_{line.pk}': 'in', f'breadth_unit_{line.pk}': 'in',
+                f'height_{line.pk}': '', f'height_unit_{line.pk}': 'in',
+                f'length_unit_{line.pk}': 'ft', f'pieces_{line.pk}': '1',
+            })
+        response = self.client.post(reverse('bom:submission_approve', args=[submission.pk]), data)
+
+        new = Product.objects.get(product_name='Coffee Table XL')
+        self.assertRedirects(response, reverse('bom:list', args=[new.pk]))
+        self.assertEqual(new.product_code, 'COFFEE-TABLE-XL')
+        self.assertEqual((new.hsn_code, new.gst_rate), ('9403', Decimal('12.00')))
+        self.assertEqual(BOMItem.objects.get(product=new).quantity, Decimal('8'))
+        self.assertEqual(WoodPart.objects.filter(product=new).count(), 1)
+        # The copied product is untouched.
+        self.assertEqual(BOMItem.objects.get(product=self.product).quantity, Decimal('4.5'))
+
+        submission.refresh_from_db()
+        self.assertEqual(submission.product, new)
+        self.assertEqual(submission.status, BOMSubmission.STATUS_APPROVED)
+
+    def test_approve_open_submission_without_name_writes_nothing(self):
+        submission = self._open_submission()
+        self.client.post(self._link(submission), self._valid_post(new_product_name='Stool'))
+        admin = _make_admin()
+        self.client.force_login(admin, backend=_MODEL_BACKEND)
+        line = submission.lines.get(line_type='bom')
+        response = self.client.post(reverse('bom:submission_approve', args=[submission.pk]), {
+            'new_product_name': ' ', f'include_{line.pk}': 'on', f'quantity_{line.pk}': '8',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Enter a name for the new product.', response.context['errors'])
+        self.assertEqual(Product.objects.count(), 1)

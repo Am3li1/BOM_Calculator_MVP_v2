@@ -22,9 +22,9 @@ class SubmissionLineInline(admin.TabularInline):
 
 @admin.register(BOMSubmission)
 class BOMSubmissionAdmin(admin.ModelAdmin):
-    list_display = ['product', 'carpenter_name', 'status', 'created_at', 'submitted_at', 'reviewed_by']
+    list_display = ['product_label', 'carpenter_name', 'status', 'created_at', 'submitted_at', 'reviewed_by']
     list_filter = ['status']
-    search_fields = ['product__product_code', 'product__product_name', 'carpenter_name']
+    search_fields = ['product__product_code', 'product__product_name', 'new_product_name', 'carpenter_name']
     exclude = ['token']
     inlines = [SubmissionLineInline]
 

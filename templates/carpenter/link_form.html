@@ -5,6 +5,8 @@
 {{ resource_options|json_script:"resource-options" }}
 {{ part_options|json_script:"part-options" }}
 {{ initial_rows|json_script:"initial-rows" }}
+{{ product_library|json_script:"product-library" }}
+{{ initial_state|json_script:"initial-state" }}
 
 <style>
     .entry {
@@ -27,12 +29,34 @@
     .combo-dropdown .list-group-item { font-size: 0.95rem; }
     .combo-dropdown .active-option { background: var(--accent); color: #fff; }
     .unit-select { max-width: 5.2rem; }
+    .library-item .library-name { font-weight: 600; }
+    .library-item .sub { font-size: 0.78rem; color: var(--text-muted); }
+    .library-item .library-detail { font-size: 0.85rem; margin-top: 8px; }
+    .library-item .library-detail li { margin-bottom: 2px; }
 </style>
 
-<div class="link-card">
-    <h1 style="font-size:1.25rem; font-weight:700;">{{ labels.title }}</h1>
-    <p class="text-muted mb-0" style="font-size:0.9rem;">{{ labels.intro }}</p>
+<!-- ══ Step 1: pick a similar product, or start new ═════════════
+     Filled in by JS from #product-library. Skipped when there are no
+     products to copy, or when coming back from a failed submit. -->
+<div id="chooser" style="display:none;">
+    <div class="link-card">
+        <h2><i class="bi bi-collection me-2 text-primary"></i>{{ labels.pick_title }}</h2>
+        <p class="text-muted" style="font-size:0.9rem;">
+            {% if product %}{{ labels.pick_intro_fixed }}{% else %}{{ labels.pick_intro }}{% endif %}
+        </p>
+        <button type="button" class="btn btn-primary w-100 mb-3" id="start-new">
+            <i class="bi bi-plus-lg me-1"></i>
+            {% if product %}{{ labels.empty_list }}{% else %}{{ labels.new_product }}{% endif %}
+        </button>
+        <input type="search" id="library-search" class="form-control mb-2"
+               placeholder="{{ labels.product_search }}" autocomplete="off">
+        <div id="library-list"></div>
+        <p class="empty-note" id="library-empty" style="display:none;">{{ labels.no_products }}</p>
+    </div>
 </div>
+
+<!-- ══ Step 2: the list itself ═════════════════════════════════ -->
+<div id="entry-area" style="display:none;">
 
 {% if errors %}
 <div class="alert alert-danger">
@@ -45,6 +69,26 @@
 
 <form method="post" id="submission-form" novalidate>
     {% csrf_token %}
+
+    <div class="link-card">
+        <h1 style="font-size:1.25rem; font-weight:700;">{{ labels.title }}</h1>
+        <p class="text-muted" style="font-size:0.9rem;">{{ labels.intro }}</p>
+        <div class="d-flex justify-content-between align-items-center gap-2">
+            <span class="text-muted" style="font-size:0.85rem;" id="start-label"></span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="change-start">
+                <i class="bi bi-arrow-left me-1"></i>{{ labels.change }}
+            </button>
+        </div>
+        {% if not product %}
+        <div class="mt-3">
+            <label class="form-label" for="new-product-name">{{ labels.product_name }}</label>
+            <input type="text" name="new_product_name" id="new-product-name" class="form-control"
+                   maxlength="255" value="{{ new_product_name }}" placeholder="{{ labels.product_name_hint }}">
+            <div class="entry-error text-danger mt-1" id="name-error"></div>
+        </div>
+        {% endif %}
+        <input type="hidden" name="based_on" id="based-on">
+    </div>
 
     <!-- ══ Materials ══════════════════════════════════════════════
          The entry fields have no name attribute — only the table rows'
@@ -173,6 +217,8 @@
     </button>
 </form>
 
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -191,11 +237,22 @@
         enterPart:     '{{ labels.enter_part|escapejs }}',
         enterSizes:    '{{ labels.enter_sizes|escapejs }}',
         enterPieces:   '{{ labels.enter_pieces|escapejs }}',
-        notAdded:      '{{ labels.not_added|escapejs }}'
+        notAdded:      '{{ labels.not_added|escapejs }}',
+        enterName:     '{{ labels.enter_product_name|escapejs }}',
+        copy:          '{{ labels.copy|escapejs }}',
+        view:          '{{ labels.view|escapejs }}',
+        hide:          '{{ labels.hide|escapejs }}',
+        copiedFrom:    '{{ labels.copied_from|escapejs }}',
+        newList:       '{{ labels.new_list|escapejs }}',
+        confirmChange: '{{ labels.confirm_change|escapejs }}',
+        materials:     '{{ labels.materials_count|escapejs }}',
+        parts:         '{{ labels.parts_count|escapejs }}'
     };
     var resources = JSON.parse(document.getElementById('resource-options').textContent);
     var parts = JSON.parse(document.getElementById('part-options').textContent);
     var initial = JSON.parse(document.getElementById('initial-rows').textContent);
+    var library = JSON.parse(document.getElementById('product-library').textContent);
+    var state = JSON.parse(document.getElementById('initial-state').textContent);
     var byId = {};
     resources.forEach(function (o) { byId[String(o.id)] = o; });
 
@@ -544,8 +601,11 @@
     // ── Parts with measurements ──────────────────────────────────
     var dimPieces = $('dim-pieces');
     var dimPart;
+    var dimResources = resources.slice().sort(function (a, b) {
+        return (a.material_type === 'other') - (b.material_type === 'other');
+    });
     var dimMaterial = buildCombo($('dim-material'), {
-        items: resources,
+        items: dimResources,
         fields: ['name', 'name_ta', 'aliases', 'category'],
         placeholder: L.search,
         label: resourceLabel,
@@ -646,13 +706,32 @@
         showError('dim', '');
 
         flash(appendDimRow(v));
-        // Keep the material and units — the next part is usually cut
-        // from the same board.
-        dimPart.clear();
-        DIMS.forEach(function (dim) { $('dim-' + dim).value = ''; });
-        dimPieces.value = '1';
-        dimPart.focus();
+        resetDimEntry();
+        dimMaterial.focus();
         return true;
+    }
+
+    // Units as the page first loaded them, so each new entry starts the
+    // same way.
+    var START_UNITS = {};
+    DIMS.forEach(function (dim) { START_UNITS[dim] = $('dim-' + dim + '-unit').value; });
+
+    function resetDimEntry() {
+        dimMaterial.clear();
+        dimPart.clear();
+        DIMS.forEach(function (dim) {
+            $('dim-' + dim).value = '';
+            $('dim-' + dim + '-unit').value = START_UNITS[dim];
+        });
+        dimPieces.value = '1';
+        showError('dim', '');
+    }
+
+    function resetBomEntry() {
+        bomMaterial.clear();
+        bomQty.value = '';
+        $('bom-unit-hint').textContent = '';
+        showError('bom', '');
     }
 
     $('dim-add').addEventListener('click', addDim);
@@ -662,16 +741,148 @@
         });
     });
 
+    // ── Step 1: copy a similar product or start new ──────────────
+    var nameInput = $('new-product-name');
+
+    function el(tag, cls, text) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text != null) e.textContent = text;
+        return e;
+    }
+
+    function clearTables() {
+        ['bom', 'dim'].forEach(function (prefix) {
+            $(prefix + '-table').tBodies[0].innerHTML = '';
+            refreshTable(prefix);
+        });
+        resetBomEntry();
+        resetDimEntry();
+    }
+
+    function showEntry(basedOnId, basedOnName) {
+        $('based-on').value = basedOnId || '';
+        $('start-label').textContent = basedOnId ? L.copiedFrom + ': ' + basedOnName : L.newList;
+        $('change-start').style.display = library.length ? '' : 'none';
+        $('chooser').style.display = 'none';
+        $('entry-area').style.display = '';
+        window.scrollTo(0, 0);
+    }
+
+    function startFrom(product) {
+        clearTables();
+        if (product) {
+            product.bom.forEach(function (r) { appendBomRow(r.resource, r.quantity); });
+            product.dim.forEach(appendDimRow);
+        }
+        showEntry(product && product.id, product && product.name);
+        if (nameInput && !nameInput.value) nameInput.focus();
+    }
+
+    function showChooser() {
+        $('entry-area').style.display = 'none';
+        $('chooser').style.display = '';
+        window.scrollTo(0, 0);
+    }
+
+    function libraryDetail(product) {
+        var box = el('div', 'library-detail');
+        box.style.display = 'none';
+        if (product.bom.length) {
+            box.appendChild(el('div', 'fw-semibold', '{{ labels.materials|escapejs }}'));
+            var ul = el('ul', 'ps-3 mb-2');
+            product.bom.forEach(function (r) {
+                var opt = byId[String(r.resource)];
+                ul.appendChild(el('li', null, (opt ? resourceLabel(opt) : '—') + ' — ' +
+                                  r.quantity + (opt ? ' ' + opt.unit : '')));
+            });
+            box.appendChild(ul);
+        }
+        if (product.dim.length) {
+            box.appendChild(el('div', 'fw-semibold', '{{ labels.dimensions|escapejs }}'));
+            var ul2 = el('ul', 'ps-3 mb-0');
+            product.dim.forEach(function (v) {
+                var opt = byId[String(v.resource)];
+                var li = el('li', null, v.part + ' — ' + sizeText(v) + ' × ' + v.pieces);
+                li.appendChild(el('div', 'sub', opt ? resourceLabel(opt) : '—'));
+                ul2.appendChild(li);
+            });
+            box.appendChild(ul2);
+        }
+        return box;
+    }
+
+    function renderLibrary() {
+        var list = $('library-list');
+        library.forEach(function (product) {
+            var card = el('div', 'row-card library-item');
+            card.dataset.name = norm(product.name);
+            card.appendChild(el('div', 'library-name', product.name));
+            card.appendChild(el('div', 'sub', product.bom.length + ' ' + L.materials +
+                                ' · ' + product.dim.length + ' ' + L.parts));
+            var detail = libraryDetail(product);
+            var buttons = el('div', 'd-flex gap-2 mt-2');
+            var viewBtn = el('button', 'btn btn-sm btn-outline-secondary', L.view);
+            viewBtn.type = 'button';
+            viewBtn.addEventListener('click', function () {
+                var open = detail.style.display === 'none';
+                detail.style.display = open ? '' : 'none';
+                viewBtn.textContent = open ? L.hide : L.view;
+            });
+            var copyBtn = el('button', 'btn btn-sm btn-primary');
+            copyBtn.type = 'button';
+            copyBtn.innerHTML = '<i class="bi bi-copy me-1"></i>';
+            copyBtn.appendChild(document.createTextNode(L.copy));
+            copyBtn.addEventListener('click', function () { startFrom(product); });
+            buttons.appendChild(viewBtn);
+            buttons.appendChild(copyBtn);
+            card.appendChild(buttons);
+            card.appendChild(detail);
+            list.appendChild(card);
+        });
+    }
+
+    $('library-search').addEventListener('input', function () {
+        var q = norm(this.value), shown = 0;
+        $('library-list').querySelectorAll('.library-item').forEach(function (card) {
+            var hit = !q || card.dataset.name.indexOf(q) !== -1;
+            card.style.display = hit ? '' : 'none';
+            if (hit) shown++;
+        });
+        $('library-empty').style.display = shown ? 'none' : '';
+    });
+    $('start-new').addEventListener('click', function () { startFrom(null); });
+    $('change-start').addEventListener('click', function () {
+        var hasRows = $('bom-table').tBodies[0].rows.length || $('dim-table').tBodies[0].rows.length;
+        if (hasRows && !confirm(L.confirmChange)) return;
+        clearTables();
+        showChooser();
+    });
+
+    renderLibrary();
+
     // ── Restore rows after a failed submit ───────────────────────
     (initial.bom || []).forEach(function (r) { appendBomRow(r.resource, r.quantity); });
     (initial.dim || []).forEach(appendDimRow);
     refreshTable('bom');
     refreshTable('dim');
 
+    if (state.started || !library.length) {
+        showEntry(state.based_on, state.based_on_name);
+    } else {
+        showChooser();
+    }
+
     // Anything left in an entry box when Send is pressed gets added
     // first; if it can't be added, stop and say so rather than silently
     // dropping it.
     $('submission-form').addEventListener('submit', function (e) {
+        if (nameInput && !nameInput.value.trim()) {
+            e.preventDefault();
+            $('name-error').textContent = L.enterName;
+            nameInput.focus();
+            return;
+        }
         if (bomEntryDirty() && !addBom()) {
             e.preventDefault();
             showError('bom', L.notAdded + ' ' + $('bom-error').textContent);
