@@ -165,15 +165,6 @@
                     <div class="input-group">
                         <input type="number" id="dim-length" class="form-control" step="any" min="0" inputmode="decimal">
                         <select id="dim-length-unit" class="form-select unit-select">
-                            {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'ft' %} selected{% endif %}>{{ code }}</option>{% endfor %}
-                        </select>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <label class="form-label">{{ labels.height }} {{ labels.optional }}</label>
-                    <div class="input-group">
-                        <input type="number" id="dim-height" class="form-control" step="any" min="0" inputmode="decimal">
-                        <select id="dim-height-unit" class="form-select unit-select">
                             {% for code, label in unit_choices %}<option value="{{ code }}"{% if code == 'in' %} selected{% endif %}>{{ code }}</option>{% endfor %}
                         </select>
                     </div>
@@ -258,10 +249,10 @@
 
     // Same unit defaults as the admin Add Dimension page.
     var DEFAULT_UNITS = {
-        solid_wood: { width: 'in', breadth: 'in', length: 'ft' },
+        solid_wood: { width: 'in', breadth: 'in', length: 'in' },
         sheet:      { width: 'ft', breadth: 'ft', length: 'ft' }
     };
-    var DIMS = ['width', 'breadth', 'length', 'height'];
+    var DIMS = ['width', 'breadth', 'length'];
     // Order and names must match _DIM_FIELDS in apps/carpenter/views.py.
     var DIM_FIELDS = ['resource', 'part', 'width', 'width_unit', 'breadth', 'breadth_unit',
                       'height', 'height_unit', 'length', 'length_unit', 'pieces'];
@@ -644,13 +635,15 @@
             v[dim] = $('dim-' + dim).value.trim();
             v[dim + '_unit'] = $('dim-' + dim + '-unit').value;
         });
+        // Height is no longer asked for; the server still expects the field.
+        v.height = '';
+        v.height_unit = 'in';
         return v;
     }
 
     function sizeText(v) {
         var s = [v.width + ' ' + v.width_unit, v.breadth + ' ' + v.breadth_unit,
                  v.length + ' ' + v.length_unit].join(' × ');
-        if (v.height) s += ' · H ' + v.height + ' ' + v.height_unit;
         return s;
     }
 
@@ -735,7 +728,7 @@
     }
 
     $('dim-add').addEventListener('click', addDim);
-    ['dim-width', 'dim-breadth', 'dim-length', 'dim-height', 'dim-pieces'].forEach(function (id) {
+    ['dim-width', 'dim-breadth', 'dim-length', 'dim-pieces'].forEach(function (id) {
         $(id).addEventListener('keydown', function (e) {
             if (e.key === 'Enter') { e.preventDefault(); addDim(); }
         });

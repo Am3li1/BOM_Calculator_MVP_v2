@@ -335,7 +335,7 @@ def woodpart_add(request, product_pk):
 
         if not all([resource_id, part_id, width, breadth, length, pieces]) or \
            (part_id == '__new__' and not new_part_name):
-            messages.error(request, 'All fields except Height are required.')
+            messages.error(request, 'Please fill in all fields.')
         else:
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)
@@ -439,12 +439,13 @@ def woodpart_edit(request, pk):
         part_name    = request.POST.get('part_name', '').strip()
         width        = request.POST.get('width')
         breadth      = request.POST.get('breadth')
-        height       = request.POST.get('height') or '0'
+        # Height is no longer on the form — keep whatever was saved.
+        height       = request.POST.get('height') or wood_part.height or '0'
         length       = request.POST.get('length')
         pieces       = request.POST.get('pieces')
         width_unit   = request.POST.get('width_unit', 'in')
         breadth_unit = request.POST.get('breadth_unit', 'in')
-        height_unit  = request.POST.get('height_unit', 'in')
+        height_unit  = request.POST.get('height_unit') or wood_part.height_unit or 'in'
         length_unit  = request.POST.get('length_unit', 'in')
 
         use_custom_formula = request.POST.get('use_custom_formula') == 'on'
@@ -454,7 +455,7 @@ def woodpart_edit(request, pk):
         )
 
         if not all([resource_id, part_name, width, breadth, length, pieces]):
-            messages.error(request, 'All fields except Height are required.')
+            messages.error(request, 'Please fill in all fields.')
         else:
             try:
                 resource = Resource.objects.get(pk=resource_id, active=True)

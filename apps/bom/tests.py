@@ -67,6 +67,76 @@ class WoodPartCalculatedQuantityTests(TestCase):
             places=6,
         )
 
+    def test_solid_wood_length_in_inches_matches_feet(self):
+        # Solid wood now defaults Length to inches on the forms — 96in
+        # must give exactly the same CFT as 8ft.
+        kwargs = dict(
+            product=self.product, resource=self.teak, part_name='Leg',
+            width=2, width_unit='in', breadth=2, breadth_unit='in', pieces=4,
+        )
+        wp_ft = WoodPart(length=8, length_unit='ft', **kwargs)
+        wp_in = WoodPart(length=96, length_unit='in', **kwargs)
+        self.assertAlmostEqual(
+            float(wp_ft.calculated_quantity),
+            float(wp_in.calculated_quantity),
+            places=6,
+        )
+
+    def test_full_formula_presets_match_builtin(self):
+        # The "Plywood" / "Wood" one-click formulas on the dimension
+        # form must give the same result as the built-in formulas.
+        wood_kwargs = dict(
+            product=self.product, resource=self.teak, part_name='Leg',
+            width=2, width_unit='in', breadth=3, breadth_unit='in',
+            length=90, length_unit='in', pieces=4,
+        )
+        builtin = WoodPart(**wood_kwargs).calculated_quantity
+        preset = WoodPart(
+            formula_expression='width_in * breadth_in * length_ft * pieces / 144',
+            **wood_kwargs,
+        ).calculated_quantity
+        self.assertAlmostEqual(float(builtin), float(preset), places=6)
+
+        ply_kwargs = dict(
+            product=self.product, resource=self.ply, part_name='Panel',
+            width=2, width_unit='ft', breadth=30, breadth_unit='in',
+            length=1, length_unit='ft', pieces=3,
+        )
+        builtin = WoodPart(**ply_kwargs).calculated_quantity
+        preset = WoodPart(
+            formula_expression='width_ft * breadth_ft * pieces', **ply_kwargs,
+        ).calculated_quantity
+        self.assertAlmostEqual(float(builtin), float(preset), places=6)
+
+    def test_sqft_resource_is_always_sheet(self):
+        # Two-dimensional materials (priced per sq ft) like Teak Ost
+        # must use the plywood formula even if saved as solid_wood.
+        ost = Resource.objects.create(
+            resource_name='Teak Ost', category='Wood and Plywood',
+            material_type='solid_wood', unit='sqft', rate=Decimal('500'),
+        )
+        ost.refresh_from_db()
+        self.assertEqual(ost.material_type, 'sheet')
+        wp = WoodPart(
+            product=self.product, resource=ost, part_name='Ost',
+            width=6, width_unit='in', breadth=2, breadth_unit='in',
+            length=1, length_unit='in', pieces=1,
+        )
+        # 6in × 2in = 12 sq in = 1/12 sq ft
+        self.assertAlmostEqual(float(wp.calculated_quantity), 1 / 12, places=6)
+
+    def test_sqft_rule_leaves_existing_resources_alone(self):
+        r = Resource.objects.create(
+            resource_name='Glass 4mm', category='Glass',
+            material_type='other', unit='kg', rate=Decimal('50'),
+        )
+        Resource.objects.filter(pk=r.pk).update(unit='sqft')
+        r.refresh_from_db()
+        r.rate = Decimal('60')
+        r.save()
+        r.refresh_from_db()
+        self.assertEqual(r.material_type, 'other')
+
     def test_sheet_sft_formula_uses_width_times_breadth(self):
         # 1.25ft * 1.25ft * 4pcs = 6.25 — matches the real spreadsheet
         # row this was validated against. No divisor for sheet goods.

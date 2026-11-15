@@ -204,7 +204,6 @@
                     <th>Width</th>
                     <th>Breadth</th>
                     <th>Length</th>
-                    <th>Height</th>
                     <th style="width:5rem;">Pcs</th>
                 </tr>
             </thead>
@@ -227,7 +226,6 @@
                     {% include "bom/_submission_dim_cell.html" with name="width" value=v.width unit=v.width_unit %}
                     {% include "bom/_submission_dim_cell.html" with name="breadth" value=v.breadth unit=v.breadth_unit %}
                     {% include "bom/_submission_dim_cell.html" with name="length" value=v.length unit=v.length_unit %}
-                    {% include "bom/_submission_dim_cell.html" with name="height" value=v.height unit=v.height_unit %}
                     <td>
                         {% if editable %}
                         <input type="number" name="pieces_{{ line.pk }}" value="{{ v.pieces|default_if_none:'' }}" step="1" min="1" class="form-control form-control-sm">

@@ -45,7 +45,7 @@ a resource, use its English name.
 
 Rows:
 - Material row: resource + quantity (in the resource's unit). Use stage_material.
-- Dimension row: resource, part name, width, breadth, length (optional height), \
+- Dimension row: resource, part name, width, breadth, length, \
 a unit for each ({units}), and pieces. Use stage_dimension.
 
 Rules:
@@ -53,8 +53,8 @@ Rules:
 id. If several match, ask which one (name at most three). If none match, say so.
 2. Call search_parts before naming a new part, to reuse existing names.
 3. If a required value is missing, ask for it. Do not guess. If units are not \
-given, suggest the usual ones (solid wood: width and breadth in inches, length \
-in feet; ply or MDF sheets: feet) and say which you used.
+given, suggest the usual ones (solid wood: width, breadth and length in \
+inches; ply or MDF sheets: feet) and say which you used.
 4. To fix a staged row, call remove_staged_row, then stage the corrected row.
 5. If a tool returns an "error", read it, then fix the arguments or ask the admin.
 6. Staged rows are only a draft; the admin presses Save to BOM to write them. \
@@ -125,8 +125,6 @@ TOOLS = [
             'breadth_unit': {'type': 'string', 'enum': DIMENSIONAL_UNIT_CODES},
             'length': {'type': 'number'},
             'length_unit': {'type': 'string', 'enum': DIMENSIONAL_UNIT_CODES},
-            'height': {'type': 'number', 'description': 'Optional.'},
-            'height_unit': {'type': 'string', 'enum': DIMENSIONAL_UNIT_CODES},
             'pieces': {'type': 'integer', 'minimum': 1},
         },
         ['resource_id', 'part_name', 'width', 'width_unit', 'breadth',

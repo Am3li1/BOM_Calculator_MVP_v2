@@ -294,6 +294,15 @@
                 unitInput.value = suggestion;
             }
         });
+        // New resources only: priced per sq ft = two-dimensional =
+        // sheet (the server enforces this on create too).
+        {% if not resource %}
+        unitInput.addEventListener('change', function () {
+            if (unitInput.value === 'sqft') {
+                materialTypeSelect.value = 'sheet';
+            }
+        });
+        {% endif %}
     }
 })();
 </script>

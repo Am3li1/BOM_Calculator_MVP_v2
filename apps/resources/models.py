@@ -218,6 +218,11 @@ class Resource(models.Model):
         from apps.core.search import normalize_text, normalize_multiline
         self.name_ta = normalize_text(self.name_ta)
         self.aliases = normalize_multiline(self.aliases)
+        # A NEW resource priced per sq ft is a two-dimensional (sheet)
+        # material: same ft units and W × B formula as plywood. Existing
+        # resources are left exactly as they are.
+        if self._state.adding and (self.unit or '').strip().lower() == 'sqft':
+            self.material_type = 'sheet'
         super().save(*args, **kwargs)
 
     # ── Rate properties ───────────────────────────────────────────
