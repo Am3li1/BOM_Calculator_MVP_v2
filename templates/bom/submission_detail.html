@@ -116,6 +116,58 @@
 {% endif %}
 
 {% if submission.status != 'open' and submission.status != 'revoked' %}
+<!-- AI check (apps/bom/reviewer.py) -->
+<div class="content-card mb-4">
+    <div class="card-header d-flex align-items-center">
+        <span><i class="bi bi-stars me-2 text-primary"></i> AI check</span>
+        {% if submission.ai_reviewed_at %}
+        <span class="text-muted ms-2" style="font-size:0.8rem;">{{ submission.ai_reviewed_at|date:"d M Y, H:i" }}</span>
+        {% endif %}
+        {% if editable %}
+        <form method="post" action="{% url 'bom:submission_ai_check' pk=submission.pk %}" class="ms-auto"
+              onsubmit="return {% if findings %}confirm('Run the check again? The carpenter's answers to the current questions will be replaced.'){% else %}true{% endif %};">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrow-repeat me-1"></i> {% if submission.ai_reviewed_at %}Re-run{% else %}Run{% endif %} AI check
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% if findings %}
+    <ul class="list-group list-group-flush">
+        {% for f in findings %}
+        <li class="list-group-item px-4">
+            <div class="d-flex flex-wrap align-items-start gap-2">
+                <span class="badge {% if f.kind == 'missing' or f.kind == 'companion' %}bg-warning text-dark{% elif f.kind == 'quantity' or f.kind == 'dimension' %}bg-danger{% else %}bg-secondary{% endif %}" style="font-size:0.7rem;">{{ f.get_kind_display }}</span>
+                <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">
+                    {% if f.source == 'ai' %}<i class="bi bi-stars me-1"></i>{% else %}<i class="bi bi-bar-chart me-1"></i>{% endif %}{{ f.get_source_display }}</span>
+                <span class="flex-grow-1" style="font-size:0.9rem;">{{ f.message }}</span>
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-1" style="font-size:0.78rem;">
+                {% if f.evidence %}<span class="text-muted">{{ f.evidence }}</span>{% endif %}
+                {% if f.carpenter_response %}
+                <span><i class="bi bi-person me-1"></i>Carpenter: <strong>{{ f.get_carpenter_response_display }}</strong></span>
+                {% elif submission.status == 'pending' and not f.carpenter_response %}
+                <span class="text-muted"><i class="bi bi-person me-1"></i>Carpenter: no answer</span>
+                {% endif %}
+                {% if f.admin_outcome == 'confirmed' %}
+                <span class="text-success"><i class="bi bi-check-circle me-1"></i>{{ f.get_admin_outcome_display }}</span>
+                {% elif f.admin_outcome == 'rejected' %}
+                <span class="text-muted"><i class="bi bi-x-circle me-1"></i>{{ f.get_admin_outcome_display }}</span>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% elif submission.ai_reviewed_at %}
+    <p class="text-muted p-4 mb-0" style="font-size:0.875rem;"><i class="bi bi-check2-circle text-success me-1"></i>The AI check found nothing to question in this list.</p>
+    {% else %}
+    <p class="text-muted p-4 mb-0" style="font-size:0.875rem;">This list was not checked by the AI.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if submission.status != 'open' and submission.status != 'revoked' %}
 <form method="post" action="{% url 'bom:submission_approve' pk=submission.pk %}" id="approve-form">
     {% csrf_token %}
 
@@ -158,7 +210,7 @@
                     <td class="ps-4"><input type="checkbox" class="form-check-input" name="include_{{ line.pk }}" {% if row.include %}checked{% endif %}></td>
                     {% endif %}
                     <td {% if not editable %}class="ps-4"{% endif %}>
-                        {{ line.resource.resource_name }}
+                        {% if row.flagged %}<i class="bi bi-exclamation-triangle-fill text-danger me-1" title="The AI check questioned this quantity — see AI check above"></i>{% endif %}{{ line.resource.resource_name }}
                         {% if line.resource.name_ta %}<span class="text-muted" style="font-size:0.8rem;">· {{ line.resource.name_ta }}</span>{% endif %}
                         <div class="text-muted" style="font-size:0.75rem;">{{ line.resource.category }}</div>
                     </td>
@@ -187,6 +239,41 @@
         <p class="text-muted p-4 mb-0" style="font-size:0.875rem;">No materials in this submission.</p>
         {% endif %}
     </div>
+
+    {% if editable and missing_findings %}
+    <!-- Materials the AI check thinks are missing — unticked by default -->
+    <div class="content-card mb-4">
+        <div class="card-header">
+            <i class="bi bi-stars me-2 text-primary"></i> Suggested by the AI check
+            <span class="text-muted ms-1" style="font-size:0.8rem;">→ tick to add to the Standard BOM on approval</span>
+        </div>
+        <div class="table-responsive">
+        <table class="table mb-0 align-middle">
+            <thead><tr>
+                <th class="ps-4" style="width:3rem;">Add</th>
+                <th>Resource</th>
+                <th>Carpenter said</th>
+                <th style="width:10rem;">Approve qty</th>
+            </tr></thead>
+            <tbody>
+            {% for f in missing_findings %}
+            {% if f.resource %}
+            <tr>
+                <td class="ps-4"><input type="checkbox" class="form-check-input" name="add_finding_{{ f.pk }}"
+                    {% if f.pk in added_findings %}checked{% endif %}></td>
+                <td>{{ f.resource.resource_name }}
+                    <div class="text-muted" style="font-size:0.75rem;">{{ f.resource.category }} · {{ f.resource.unit }}</div></td>
+                <td style="font-size:0.85rem;">{{ f.get_carpenter_response_display|default:"—" }}</td>
+                <td><input type="number" name="finding_qty_{{ f.pk }}" value="{{ f.suggested_value }}"
+                           step="any" min="0" class="form-control form-control-sm text-end"></td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Dimensions -->
     <div class="content-card mb-4">
@@ -219,12 +306,19 @@
                         <input type="text" name="part_{{ line.pk }}" value="{{ v.part }}" class="form-control form-control-sm mb-1" maxlength="200">
                         {% else %}<div class="fw-semibold">{{ line.part_name }}</div>{% endif %}
                         <span class="badge" style="font-size:0.7rem; background:var(--surface-raised); color:var(--text); border:1px solid var(--border);">{{ line.resource.resource_name }}</span>
+                        {% if row.flagged %}
+                        <div class="text-danger" style="font-size:0.72rem;"><i class="bi bi-exclamation-triangle-fill me-1"></i>Questioned by the AI check — see above</div>
+                        {% endif %}
                         {% if row.already_in_bom %}
                         <div class="text-warning" style="font-size:0.72rem;"><i class="bi bi-exclamation-triangle me-1"></i>Already in BOM — approving adds another entry</div>
                         {% endif %}
                     </td>
                     {% include "bom/_submission_dim_cell.html" with name="width" value=v.width unit=v.width_unit %}
+                    {% if line.resource.material_type == 'sheet' %}
+                    <td class="text-muted" title="Sheet material — Width × Length only">—</td>
+                    {% else %}
                     {% include "bom/_submission_dim_cell.html" with name="breadth" value=v.breadth unit=v.breadth_unit %}
+                    {% endif %}
                     {% include "bom/_submission_dim_cell.html" with name="length" value=v.length unit=v.length_unit %}
                     <td>
                         {% if editable %}

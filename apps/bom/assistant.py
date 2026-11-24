@@ -46,7 +46,9 @@ a resource, use its English name.
 Rows:
 - Material row: resource + quantity (in the resource's unit). Use stage_material.
 - Dimension row: resource, part name, width, breadth, length, \
-a unit for each ({units}), and pieces. Use stage_dimension.
+a unit for each ({units}), and pieces. Use stage_dimension. Sheet materials \
+(material_type "sheet": plywood, MDF) are two-dimensional: width and length \
+only. Never ask for or send breadth for them.
 
 Rules:
 1. Always call search_resources first and use the id it returns. Never invent an \
@@ -54,7 +56,7 @@ id. If several match, ask which one (name at most three). If none match, say so.
 2. Call search_parts before naming a new part, to reuse existing names.
 3. If a required value is missing, ask for it. Do not guess. If units are not \
 given, suggest the usual ones (solid wood: width, breadth and length in \
-inches; ply or MDF sheets: feet) and say which you used.
+inches; ply or MDF sheets: width and length in feet) and say which you used.
 4. To fix a staged row, call remove_staged_row, then stage the corrected row.
 5. If a tool returns an "error", read it, then fix the arguments or ask the admin.
 6. Staged rows are only a draft; the admin presses Save to BOM to write them. \
@@ -127,8 +129,10 @@ TOOLS = [
             'length_unit': {'type': 'string', 'enum': DIMENSIONAL_UNIT_CODES},
             'pieces': {'type': 'integer', 'minimum': 1},
         },
-        ['resource_id', 'part_name', 'width', 'width_unit', 'breadth',
-         'breadth_unit', 'length', 'length_unit', 'pieces'],
+        # breadth is checked by clean_dimension_line — sheet materials
+        # (plywood / MDF) don't have one.
+        ['resource_id', 'part_name', 'width', 'width_unit',
+         'length', 'length_unit', 'pieces'],
     ),
     _function(
         'remove_staged_row',
@@ -208,10 +212,27 @@ def draft_to_lines(draft):
     return lines
 
 
+def _is_zero(value):
+    try:
+        return Decimal(str(value or 0)) == 0
+    except (InvalidOperation, ValueError):
+        return False
+
+
+def _size_text(p):
+    if p.resource.material_type == 'sheet':
+        return f'{p.width.normalize()}{p.width_unit} x {p.length.normalize()}{p.length_unit}'
+    return (f'{p.width.normalize()}{p.width_unit} x {p.breadth.normalize()}{p.breadth_unit} '
+            f'x {p.length.normalize()}{p.length_unit}')
+
+
 def describe_draft_row(row):
     if row['type'] == 'bom':
         return f"{row['resource_name']}: {row['quantity']} {row['unit']}"
-    dims = f"{row['width']}{row['width_unit']} x {row['breadth']}{row['breadth_unit']} x {row['length']}{row['length_unit']}"
+    if _is_zero(row['breadth']):   # sheet material: Width × Length
+        dims = f"{row['width']}{row['width_unit']} x {row['length']}{row['length_unit']}"
+    else:
+        dims = f"{row['width']}{row['width_unit']} x {row['breadth']}{row['breadth_unit']} x {row['length']}{row['length_unit']}"
     if row['height'] not in ('0', '0.0', '0.0000', ''):
         dims += f" x {row['height']}{row['height_unit']}"
     return f"{row['part_name']} ({row['resource_name']}): {dims}, {row['pieces']} pcs"
@@ -260,8 +281,7 @@ def _current_bom(product):
         'dimensions': [
             {
                 'part': p.part_name, 'resource': p.resource.resource_name,
-                'size': f'{p.width.normalize()}{p.width_unit} x {p.breadth.normalize()}{p.breadth_unit} '
-                        f'x {p.length.normalize()}{p.length_unit}',
+                'size': _size_text(p),
                 'pieces': p.pieces,
             }
             for p in parts

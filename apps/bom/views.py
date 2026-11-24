@@ -13,6 +13,15 @@ from .models import BOMItem
 from .services import LineError, apply_lines, describe_result
 
 
+def _is_sheet(resource_id):
+    """True for a sheet material (plywood / MDF) — measured Width × Length,
+    with no Breadth."""
+    from apps.resources.models import Resource
+    if not str(resource_id or '').isdigit():
+        return False
+    return Resource.objects.filter(pk=resource_id, material_type='sheet').exists()
+
+
 @login_required
 @not_carpenter
 @admin_required
@@ -333,6 +342,10 @@ def woodpart_add(request, product_pk):
             if use_custom_formula else ''
         )
 
+        # Sheet materials (plywood / MDF) are Width × Length — no Breadth.
+        if _is_sheet(resource_id):
+            breadth = '0'
+
         if not all([resource_id, part_id, width, breadth, length, pieces]) or \
            (part_id == '__new__' and not new_part_name):
             messages.error(request, 'Please fill in all fields.')
@@ -453,6 +466,10 @@ def woodpart_edit(request, pk):
             request.POST.get('formula_expression', '').strip()
             if use_custom_formula else ''
         )
+
+        # Sheet materials (plywood / MDF) are Width × Length — no Breadth.
+        if _is_sheet(resource_id):
+            breadth = '0'
 
         if not all([resource_id, part_name, width, breadth, length, pieces]):
             messages.error(request, 'Please fill in all fields.')

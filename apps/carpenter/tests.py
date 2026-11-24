@@ -19,6 +19,9 @@ def _make_admin(username='admin1'):
     return User.objects.create_user(username=username, password='x', is_staff=True)
 
 
+# The AI reviewer must never call a real LLM from tests (a developer's
+# .env may hold a key). Tests that want it mock reviewer_llm._client.
+@override_settings(BOM_ASSISTANT_API_KEY='')
 class _SubmissionFixtures(TestCase):
 
     @classmethod
@@ -466,3 +469,188 @@ class ProductLibraryAndNewProductTests(_SubmissionFixtures):
         self.assertEqual(response.status_code, 200)
         self.assertIn('Enter a name for the new product.', response.context['errors'])
         self.assertEqual(Product.objects.count(), 1)
+
+
+class AIReviewFormTests(_SubmissionFixtures):
+    """The AI check on the public form: questions first, save on the
+    second Send, answers stored as SubmissionFinding rows."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.screw = Resource.objects.create(
+            resource_name='Screw', category='Hardware', unit='nos', rate=Decimal('2.34'),
+        )
+        for i in (1, 2):
+            p = Product.objects.create(product_code=f'CT-{i}', product_name=f'Coffee Table {i}')
+            BOMItem.objects.create(product=p, resource=cls.hinge, quantity=8)
+            BOMItem.objects.create(product=p, resource=cls.screw, quantity=32)
+
+    def _first_send(self, submission, **extra):
+        response = self.client.post(self._link(submission), self._valid_post(**extra))
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_first_send_asks_and_saves_nothing(self):
+        submission = self._submission()
+        response = self._first_send(submission)
+        findings = response.context['findings']
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]['action'], 'add')
+        self.assertEqual(findings[0]['resource_id'], self.screw.pk)
+        self.assertEqual(findings[0]['suggested'], '32')
+        self.assertContains(response, 'Did you forget')
+        self.assertTrue(response.context['review_token'])
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, BOMSubmission.STATUS_OPEN)
+        self.assertFalse(SubmissionLine.objects.exists())
+
+    def test_check_box_never_shows_rates(self):
+        content = self._first_send(self._submission()).content.decode()
+        for rate in ('2.34', '87.65', '4321'):
+            self.assertNotIn(rate, content)
+
+    def test_tamil_link_asks_in_tamil(self):
+        response = self._first_send(self._submission(language='ta'))
+        self.assertContains(response, 'மறந்துவிட்டீர்களா')
+
+    def test_second_send_saves_lines_and_answers(self):
+        submission = self._submission()
+        token = self._first_send(submission).context['review_token']
+        self.client.post(self._link(submission), self._valid_post(
+            reviewed='1', review_token=token, finding_response_0='dismissed',
+        ))
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, BOMSubmission.STATUS_PENDING)
+        self.assertIsNotNone(submission.ai_reviewed_at)
+        finding = submission.findings.get()
+        self.assertEqual((finding.kind, finding.resource, finding.carpenter_response),
+                         ('missing', self.screw, 'dismissed'))
+        self.assertEqual(finding.suggested_value, '32')
+        self.assertEqual(submission.lines.count(), 2)
+
+    def test_tampered_token_means_checked_again(self):
+        submission = self._submission()
+        token = self._first_send(submission).context['review_token']
+        response = self.client.post(self._link(submission), self._valid_post(
+            reviewed='1', review_token=token[:-2] + 'xx',
+        ))
+        self.assertEqual(len(response.context['findings']), 1)
+        self.assertFalse(SubmissionLine.objects.exists())
+
+    def test_token_from_another_link_is_ignored(self):
+        other = self._submission()
+        token = self._first_send(other).context['review_token']
+        submission = self._submission()
+        self.client.post(self._link(submission), self._valid_post(reviewed='1', review_token=token))
+        self.assertFalse(submission.lines.exists())
+
+    def test_list_with_nothing_to_question_saves_at_once(self):
+        submission = self._submission()
+        self.client.post(self._link(submission), self._valid_post(
+            bom_resource=[str(self.hinge.pk), str(self.screw.pk)], bom_quantity=['8', '32'],
+        ))
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, BOMSubmission.STATUS_PENDING)
+        self.assertIsNotNone(submission.ai_reviewed_at)
+        self.assertFalse(submission.findings.exists())
+
+    def test_reviewer_crash_never_blocks_sending(self):
+        from unittest import mock
+        from apps.bom import reviewer
+        submission = self._submission()
+        with mock.patch.object(reviewer, 'review', side_effect=RuntimeError('boom')):
+            self.client.post(self._link(submission), self._valid_post())
+        submission.refresh_from_db()
+        self.assertEqual(submission.status, BOMSubmission.STATUS_PENDING)
+
+    @override_settings(BOM_ASSISTANT_API_KEY='test-key')
+    def test_llm_budget_per_link(self):
+        from unittest import mock
+        from apps.bom import reviewer_llm
+        client = mock.Mock()
+        client.chat.completions.create.return_value = mock.Mock(
+            choices=[mock.Mock(message=mock.Mock(content='{"findings": []}'))])
+        submission = self._submission()
+        with mock.patch.object(reviewer_llm, '_client', return_value=client):
+            for _ in range(BOMSubmission.MAX_AI_CHECKS + 2):
+                self._first_send(submission)      # still has the screw question → not saved
+        submission.refresh_from_db()
+        self.assertEqual(submission.ai_checks_used, BOMSubmission.MAX_AI_CHECKS)
+        self.assertEqual(client.chat.completions.create.call_count, BOMSubmission.MAX_AI_CHECKS)
+
+
+class AIReviewAdminTests(_SubmissionFixtures):
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.screw = Resource.objects.create(
+            resource_name='Screw', category='Hardware', unit='nos', rate=Decimal('2.34'),
+        )
+        for i in (1, 2):
+            p = Product.objects.create(product_code=f'CT-{i}', product_name=f'Coffee Table {i}')
+            BOMItem.objects.create(product=p, resource=cls.hinge, quantity=8)
+            BOMItem.objects.create(product=p, resource=cls.screw, quantity=32)
+
+    def setUp(self):
+        self.admin = _make_admin()
+        self.client.force_login(self.admin, backend=_MODEL_BACKEND)
+
+    def _pending(self, response='dismissed'):
+        submission = self._submission()
+        self.client.logout()
+        token = self.client.post(self._link(submission), self._valid_post()).context['review_token']
+        self.client.post(self._link(submission), self._valid_post(
+            reviewed='1', review_token=token, finding_response_0=response))
+        self.client.force_login(self.admin, backend=_MODEL_BACKEND)
+        submission.refresh_from_db()
+        return submission
+
+    def _approve_data(self, submission, **extra):
+        data = {'review_note': ''}
+        for line in submission.lines.all():
+            data[f'include_{line.pk}'] = 'on'
+            data[f'quantity_{line.pk}'] = str(line.quantity or '')
+            for f in ('width', 'breadth', 'height', 'length', 'pieces'):
+                data[f'{f}_{line.pk}'] = str(getattr(line, f) or '')
+            for f in ('width_unit', 'breadth_unit', 'height_unit', 'length_unit'):
+                data[f'{f}_{line.pk}'] = getattr(line, f)
+            data[f'part_{line.pk}'] = line.part_name
+        data.update(extra)
+        return data
+
+    def test_review_page_shows_findings_and_answers(self):
+        submission = self._pending()
+        response = self.client.get(reverse('bom:submission_detail', args=[submission.pk]))
+        self.assertContains(response, 'AI check')
+        self.assertContains(response, 'Did you forget')
+        self.assertContains(response, 'Said not needed')
+        self.assertContains(response, 'Suggested by the AI check')
+
+    def test_admin_can_add_suggested_material_on_approval(self):
+        submission = self._pending()
+        finding = submission.findings.get()
+        self.client.post(reverse('bom:submission_approve', args=[submission.pk]), self._approve_data(
+            submission, **{f'add_finding_{finding.pk}': 'on', f'finding_qty_{finding.pk}': '30'}))
+        self.assertEqual(BOMItem.objects.get(product=self.product, resource=self.screw).quantity, 30)
+        finding.refresh_from_db()
+        self.assertEqual(finding.admin_outcome, 'confirmed')
+
+    def test_approval_without_suggestion_labels_it_rejected(self):
+        submission = self._pending()
+        self.client.post(reverse('bom:submission_approve', args=[submission.pk]),
+                         self._approve_data(submission))
+        self.assertFalse(BOMItem.objects.filter(product=self.product, resource=self.screw).exists())
+        self.assertEqual(submission.findings.get().admin_outcome, 'rejected')
+
+    def test_rerun_ai_check(self):
+        submission = self._pending()
+        submission.findings.all().delete()
+        self.client.post(reverse('bom:submission_ai_check', args=[submission.pk]))
+        self.assertEqual(submission.findings.get().resource, self.screw)
+
+    def test_rerun_only_while_pending(self):
+        submission = self._submission()
+        self.client.post(reverse('bom:submission_ai_check', args=[submission.pk]))
+        self.assertFalse(submission.findings.exists())

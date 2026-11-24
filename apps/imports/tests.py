@@ -173,6 +173,27 @@ class ValidateWoodUnitTests(TestCase):
         self.assertTrue(any('Breath Unit' in e['message'] for e in errors))
 
 
+    def test_sheet_row_width_and_length_without_breath(self):
+        # New format: plywood is Width x Length, Breath left blank.
+        path = self._write_wood_sheet([{
+            'Product': 'Test Table', 'Resource': 'Plywood 6mm', 'Parts': 'Top Panel',
+            'Width': 4, 'Breath': None, 'Length': 8,
+            'WU': 'ft', 'BU': None, 'LU': 'ft',
+        }])
+        errors = self.validate_wood(path)
+        os.remove(path)
+        self.assertEqual(errors, [])
+
+    def test_sheet_row_missing_length_is_rejected(self):
+        path = self._write_wood_sheet([{
+            'Product': 'Test Table', 'Resource': 'Plywood 6mm', 'Parts': 'Top Panel',
+            'Width': 4, 'Breath': None, 'Length': None,
+            'WU': 'ft', 'BU': None, 'LU': None,
+        }])
+        errors = self.validate_wood(path)
+        os.remove(path)
+        self.assertTrue(errors)
+
 class ResourceTamilColumnsImportTests(TestCase):
     """
     The Resource sheet accepts OPTIONAL 'Tamil Name' / 'Aliases' columns.

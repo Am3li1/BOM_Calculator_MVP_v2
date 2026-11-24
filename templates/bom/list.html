@@ -251,8 +251,12 @@
                 </td>
 
                 <td class="text-end" style="font-size:0.82rem;">
+                    {% if part.resource.material_type == 'sheet' %}
+                    <span class="text-muted" title="Sheet material — Width × Length only">—</span>
+                    {% else %}
                     {{ part.breadth|floatformat:2 }}
                     <span class="text-muted" style="font-size:0.72rem;">{{ part.breadth_unit }}</span>
+                    {% endif %}
                 </td>
 
                 <td class="text-end" style="font-size:0.82rem;">

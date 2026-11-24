@@ -282,7 +282,7 @@ class WoodPart(models.Model):
              THIS WoodPart line only.
           2. Built-in formula by resource.material_type:
                solid_wood -> CFT = (W_in × B_in × L_ft × pieces) / 144
-               sheet      -> SFT = W_ft × B_ft × pieces   (Length unused)
+               sheet      -> SFT = W_ft × L_ft × pieces   (Breadth unused)
                other      -> legacy formula_type-based calculation
                              (unchanged behaviour for anything not yet
                              classified and without a custom formula)
@@ -318,9 +318,10 @@ class WoodPart(models.Model):
             return (w_in * b_in * l_ft * pieces) / _BUILTIN_DIVISOR
 
         if material_type == 'sheet':
+            # Two-dimensional: Width × Length. Breadth is not used.
             w_ft = to_feet(self.width, self.width_unit)
-            b_ft = to_feet(self.breadth, self.breadth_unit)
-            return w_ft * b_ft * pieces
+            l_ft = to_feet(self.length, self.length_unit)
+            return w_ft * l_ft * pieces
 
         # material_type == 'other' -> legacy behaviour, unit-naive
         # (kept as-is so unclassified resources don't silently change cost)

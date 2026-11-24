@@ -29,4 +29,5 @@ urlpatterns = [
     path('submissions/<int:pk>/approve/',          views_submissions.submission_approve,     name='submission_approve'),
     path('submissions/<int:pk>/reject/',           views_submissions.submission_reject,      name='submission_reject'),
     path('submissions/<int:pk>/revoke/',           views_submissions.submission_revoke,      name='submission_revoke'),
+    path('submissions/<int:pk>/ai-check/',         views_submissions.submission_ai_check,    name='submission_ai_check'),
 ]

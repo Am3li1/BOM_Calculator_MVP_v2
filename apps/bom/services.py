@@ -69,12 +69,17 @@ def clean_dimension_line(resource_id, part_name, width, breadth, length, pieces,
     if pieces < 1:
         raise LineError('Pieces must be at least 1.')
 
+    resource = _resource(resource_id)
+    # Sheet materials (plywood / MDF) are two-dimensional — Width × Length.
+    # Breadth is never asked for and is stored as 0.
+    sheet = resource.material_type == 'sheet'
+
     return {
         'type': 'dimension',
-        'resource': _resource(resource_id),
+        'resource': resource,
         'part_name': part_name[:200],
         'width':   _decimal(width, 'Width'),
-        'breadth': _decimal(breadth, 'Breadth'),
+        'breadth': Decimal('0') if sheet else _decimal(breadth, 'Breadth'),
         'height':  _decimal(height, 'Height', required=False, allow_zero=True),
         'length':  _decimal(length, 'Length'),
         'width_unit':   _unit(width_unit),

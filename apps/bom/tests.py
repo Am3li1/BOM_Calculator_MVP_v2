@@ -99,12 +99,12 @@ class WoodPartCalculatedQuantityTests(TestCase):
 
         ply_kwargs = dict(
             product=self.product, resource=self.ply, part_name='Panel',
-            width=2, width_unit='ft', breadth=30, breadth_unit='in',
-            length=1, length_unit='ft', pieces=3,
+            width=2, width_unit='ft', breadth=0, breadth_unit='ft',
+            length=30, length_unit='in', pieces=3,
         )
         builtin = WoodPart(**ply_kwargs).calculated_quantity
         preset = WoodPart(
-            formula_expression='width_ft * breadth_ft * pieces', **ply_kwargs,
+            formula_expression='width_ft * length_ft * pieces', **ply_kwargs,
         ).calculated_quantity
         self.assertAlmostEqual(float(builtin), float(preset), places=6)
 
@@ -119,8 +119,8 @@ class WoodPartCalculatedQuantityTests(TestCase):
         self.assertEqual(ost.material_type, 'sheet')
         wp = WoodPart(
             product=self.product, resource=ost, part_name='Ost',
-            width=6, width_unit='in', breadth=2, breadth_unit='in',
-            length=1, length_unit='in', pieces=1,
+            width=6, width_unit='in', breadth=0, breadth_unit='in',
+            length=2, length_unit='in', pieces=1,
         )
         # 6in × 2in = 12 sq in = 1/12 sq ft
         self.assertAlmostEqual(float(wp.calculated_quantity), 1 / 12, places=6)
@@ -137,27 +137,26 @@ class WoodPartCalculatedQuantityTests(TestCase):
         r.refresh_from_db()
         self.assertEqual(r.material_type, 'other')
 
-    def test_sheet_sft_formula_uses_width_times_breadth(self):
-        # 1.25ft * 1.25ft * 4pcs = 6.25 — matches the real spreadsheet
-        # row this was validated against. No divisor for sheet goods.
+    def test_sheet_sft_formula_uses_width_times_length(self):
+        # 1.25ft * 1.25ft * 4pcs = 6.25. No divisor for sheet goods.
         wp = WoodPart(
             product=self.product, resource=self.ply, part_name='Panel',
             width=1.25, width_unit='ft',
-            breadth=1.25, breadth_unit='ft',
-            length=99, length_unit='ft',   # deliberately absurd — must be ignored
+            breadth=99, breadth_unit='ft',   # deliberately absurd — must be ignored
+            length=1.25, length_unit='ft',
             pieces=4,
         )
         self.assertAlmostEqual(float(wp.calculated_quantity), 6.25, places=6)
 
-    def test_sheet_ignores_length_changes(self):
-        # Changing Length must NOT change the result for sheet goods —
-        # this is the exact bug (Width x Length) that was caught and fixed.
+    def test_sheet_ignores_breadth(self):
+        # Sheet goods are two-dimensional (Width x Length) — Breadth must
+        # NOT change the result.
         base_kwargs = dict(
             product=self.product, resource=self.ply, part_name='Panel',
-            width=4, width_unit='ft', breadth=8, breadth_unit='ft', pieces=1,
+            width=4, width_unit='ft', length=8, length_unit='ft', pieces=1,
         )
-        wp_a = WoodPart(length=1, length_unit='ft', **base_kwargs)
-        wp_b = WoodPart(length=500, length_unit='ft', **base_kwargs)
+        wp_a = WoodPart(breadth=0, breadth_unit='ft', **base_kwargs)
+        wp_b = WoodPart(breadth=500, breadth_unit='ft', **base_kwargs)
         self.assertEqual(wp_a.calculated_quantity, wp_b.calculated_quantity)
         self.assertAlmostEqual(float(wp_a.calculated_quantity), 32.0, places=6)
 
@@ -211,12 +210,12 @@ class WoodPartFormulaPrecedenceTests(TestCase):
 
     def test_blank_woodpart_formula_falls_back_to_material_type_default(self):
         # No WoodPart-level formula set -> falls straight through to
-        # the built-in sheet SFT formula (W x B, Length ignored).
+        # the built-in sheet SFT formula (W x L, Breadth ignored).
         wp = WoodPart(
             product=self.product, resource=self.plain_sheet,
             part_name='Panel',
-            width=4, width_unit='ft', breadth=8, breadth_unit='ft',
-            length=999, length_unit='ft', pieces=1,
+            width=4, width_unit='ft', breadth=999, breadth_unit='ft',
+            length=8, length_unit='ft', pieces=1,
         )
         self.assertAlmostEqual(float(wp.calculated_quantity), 32.0, places=6)
         self.assertEqual(wp.formula_source, 'material_type_default')
@@ -587,3 +586,246 @@ class AssistantViewTests(TestCase):
             data={'text': 'hi'}, content_type='application/json',
         )
         self.assertEqual(response.status_code, 503)
+
+
+# ── AI BOM reviewer ──────────────────────────────────────────────────
+
+import json as _json
+from unittest import mock as _mock
+
+from django.test import override_settings
+
+from apps.bom import reviewer, reviewer_llm
+from apps.bom.models import BOMItem
+
+
+def _bom(resource, qty):
+    return {'type': 'bom', 'resource': resource, 'quantity': Decimal(str(qty))}
+
+
+def _dim(resource, part, w, b, l, unit='ft', pieces=2):
+    return {'type': 'dimension', 'resource': resource, 'part_name': part,
+            'width': Decimal(str(w)), 'breadth': Decimal(str(b)), 'height': Decimal('0'),
+            'length': Decimal(str(l)), 'width_unit': unit, 'breadth_unit': unit,
+            'height_unit': 'in', 'length_unit': unit, 'pieces': pieces}
+
+
+@override_settings(BOM_ASSISTANT_API_KEY='')
+class _ReviewerFixtures(TestCase):
+    """Four wardrobes that all use hinges, screws and handles, plus ply
+    side panels — the 'learned' data."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.hinge = Resource.objects.create(resource_name='Hinge', category='Hardware',
+                                            unit='nos', rate=Decimal('87.65'))
+        cls.screw = Resource.objects.create(resource_name='Screw 1 inch', category='Hardware',
+                                            unit='nos', rate=Decimal('1.23'))
+        cls.handle = Resource.objects.create(resource_name='Handle', category='Hardware',
+                                             unit='nos', rate=Decimal('45.67'))
+        cls.ply = Resource.objects.create(resource_name='Plywood 18mm', category='Wood and Plywood',
+                                          material_type='sheet', unit='sqft', rate=Decimal('98.76'))
+        cls.wardrobes = []
+        for i, hinges in enumerate([4, 4, 6, 4], start=1):
+            p = Product.objects.create(product_code=f'WRD-{i}', product_name=f'3-Door Wardrobe {i}')
+            BOMItem.objects.create(product=p, resource=cls.hinge, quantity=hinges)
+            BOMItem.objects.create(product=p, resource=cls.screw, quantity=40)
+            BOMItem.objects.create(product=p, resource=cls.handle, quantity=3)
+            WoodPart.objects.create(product=p, resource=cls.ply, part_name='Side Panel',
+                                    width=2, breadth=6, length=6, pieces=2,
+                                    width_unit='ft', breadth_unit='ft', length_unit='ft')
+            cls.wardrobes.append(p)
+
+    def full_list(self):
+        return [_bom(self.hinge, 4), _bom(self.screw, 40), _bom(self.handle, 3),
+                _dim(self.ply, 'Side Panel', 2, 6, 6)]
+
+
+class ReviewerStatisticsTests(_ReviewerFixtures):
+
+    def test_identical_list_raises_nothing(self):
+        self.assertEqual(reviewer.review(self.full_list(), '3-Door Wardrobe New'), [])
+
+    def test_missing_material_found_from_similar_products(self):
+        lines = [_bom(self.hinge, 4), _bom(self.handle, 3)]
+        findings = reviewer.review(lines, '3-Door Wardrobe New')
+        missing = [f for f in findings if f.kind == 'missing']
+        self.assertEqual([f.resource_id for f in missing], [self.screw.pk])
+        self.assertEqual(missing[0].suggested, '40')
+        self.assertIn('Did you forget', missing[0].message_en)
+        self.assertTrue(missing[0].message_ta)
+
+    def test_single_reference_flags_what_was_removed_from_the_copy(self):
+        ref = reviewer.Reference(1, 'Shoe Rack', 3.0, bom={self.screw.pk: Decimal('12')})
+        findings = reviewer.missing_materials([_bom(self.hinge, 2)], [ref])
+        self.assertEqual(findings[0].resource_id, self.screw.pk)
+        self.assertIn('Shoe Rack', findings[0].message_en)
+
+    def test_companion_rule(self):
+        findings = reviewer.companion_rules([_bom(self.hinge, 4)], reviewer.product_profiles())
+        self.assertIn(self.screw.pk, {f.resource_id for f in findings})
+        self.assertEqual(findings[0].kind, 'companion')
+
+    def test_quantity_typed_twelve_times_too_big(self):
+        lines = self.full_list()
+        lines[0] = _bom(self.hinge, 48)
+        findings = [f for f in reviewer.review(lines, '3-Door Wardrobe New') if f.kind == 'quantity']
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].suggested, '4')
+        self.assertEqual(findings[0].current, '48')
+        self.assertIn('different unit', findings[0].message_en)
+
+    def test_quantity_within_range_is_fine(self):
+        lines = self.full_list()
+        lines[0] = _bom(self.hinge, 6)
+        self.assertEqual(reviewer.review(lines, '3-Door Wardrobe New'), [])
+
+    def test_measurement_over_twelve_feet(self):
+        lines = self.full_list()
+        lines[3] = _dim(self.ply, 'Side Panel', 2, 6, 72)
+        findings = reviewer.review(lines, '3-Door Wardrobe New')
+        self.assertEqual([(f.kind, f.line_index) for f in findings], [('dimension', 0)])
+        self.assertIn('12 feet', findings[0].message_en)
+
+    def test_measurement_far_from_same_part(self):
+        lines = self.full_list()
+        lines[3] = _dim(self.ply, 'Side Panel', 2, 6, 6, unit='in')   # inches instead of feet
+        findings = reviewer.review(lines, '3-Door Wardrobe New')
+        self.assertEqual(findings[0].kind, 'dimension')
+
+    def test_findings_never_contain_rates(self):
+        lines = [_bom(self.hinge, 48)]
+        text = _json.dumps([f.to_dict() for f in reviewer.review(lines, '3-Door Wardrobe New')])
+        for rate in ('87.65', '1.23', '45.67', '98.76'):
+            self.assertNotIn(rate, text)
+
+    def test_dismissed_and_upheld_suggestion_is_suppressed(self):
+        from apps.carpenter.models import BOMSubmission, SubmissionFinding
+        for product in self.wardrobes[:3]:
+            submission = BOMSubmission.objects.create(product=product)
+            SubmissionFinding.objects.create(
+                submission=submission, kind='missing', resource=self.screw, message='x',
+                carpenter_response='dismissed', admin_outcome='rejected',
+            )
+        lines = [_bom(self.hinge, 4), _bom(self.handle, 3)]
+        findings = reviewer.review(lines, '3-Door Wardrobe New')
+        self.assertNotIn(self.screw.pk, {f.resource_id for f in findings})
+
+    def test_record_outcomes_labels_findings(self):
+        from apps.carpenter.models import BOMSubmission, SubmissionFinding
+        submission = BOMSubmission.objects.create(product=self.wardrobes[0])
+        missing = SubmissionFinding.objects.create(submission=submission, kind='missing',
+                                                   resource=self.screw, message='x')
+        ignored = SubmissionFinding.objects.create(submission=submission, kind='missing',
+                                                   resource=self.handle, message='x')
+        qty = SubmissionFinding.objects.create(submission=submission, kind='quantity',
+                                               resource=self.hinge, message='x', current_value='48')
+        reviewer.record_outcomes(submission, [_bom(self.hinge, 4), _bom(self.screw, 40)])
+        for finding, expected in ((missing, 'confirmed'), (ignored, 'rejected'), (qty, 'confirmed')):
+            finding.refresh_from_db()
+            self.assertEqual(finding.admin_outcome, expected)
+
+
+def _llm_client(content):
+    message = _mock.Mock(content=content)
+    response = _mock.Mock(choices=[_mock.Mock(message=message)])
+    client = _mock.Mock()
+    client.chat.completions.create.return_value = response
+    return client
+
+
+@override_settings(BOM_ASSISTANT_API_KEY='test-key')
+class ReviewerLLMTests(_ReviewerFixtures):
+
+    def _run(self, content, lines=None):
+        lines = lines or self.full_list()
+        refs = reviewer.find_similar_products('3-Door Wardrobe New', lines)
+        client = _llm_client(content)
+        with _mock.patch.object(reviewer_llm, '_client', return_value=client):
+            return reviewer_llm.ai_findings('3-Door Wardrobe New', lines, refs, [], []), client
+
+    def test_valid_reply_becomes_ai_findings(self):
+        lines = [_bom(self.hinge, 4), _bom(self.screw, 40)]
+        reply = _json.dumps({'findings': [
+            {'kind': 'missing', 'material': 'Handle', 'suggested_value': '3',
+             'question_en': 'A 3-door wardrobe needs handles. Did you forget them?',
+             'question_ta': 'கைப்பிடி?', 'reason': 'doors need handles'},
+            {'kind': 'quantity', 'material': 'Hinge', 'suggested_value': '6',
+             'question_en': 'Three doors usually need 6 hinges. Is 4 right?', 'question_ta': ''},
+        ]})
+        findings, _ = self._run(reply, lines)
+        self.assertEqual([(f.kind, f.resource_id, f.source) for f in findings],
+                         [('missing', self.handle.pk, 'ai'), ('quantity', self.hinge.pk, 'ai')])
+        self.assertEqual(findings[1].current, '4')
+        self.assertEqual(findings[1].message_ta, findings[1].message_en)   # Tamil falls back
+
+    def test_unknown_material_is_dropped(self):
+        reply = _json.dumps({'findings': [
+            {'kind': 'missing', 'material': 'Gold leaf', 'question_en': 'Gold leaf?'},
+        ]})
+        self.assertEqual(self._run(reply)[0], [])
+
+    def test_bad_json_returns_nothing(self):
+        self.assertEqual(self._run('Sure! Here are my thoughts...')[0], [])
+
+    def test_fenced_json_is_accepted(self):
+        reply = '```json\n{"findings": [{"kind": "other", "material": "", ' \
+                '"question_en": "Is the polish included?"}]}\n```'
+        self.assertEqual(self._run(reply)[0][0].kind, 'other')
+
+    def test_provider_error_returns_nothing(self):
+        client = _mock.Mock()
+        client.chat.completions.create.side_effect = RuntimeError('429')
+        with _mock.patch.object(reviewer_llm, '_client', return_value=client):
+            self.assertEqual(reviewer_llm.ai_findings('x', self.full_list(), [], [], []), [])
+
+    def test_payload_never_contains_rates(self):
+        _, client = self._run('{"findings": []}', [_bom(self.hinge, 48)])
+        sent = _json.dumps(client.chat.completions.create.call_args.kwargs['messages'])
+        for rate in ('87.65', '1.23', '45.67', '98.76'):
+            self.assertNotIn(rate, sent)
+        self.assertNotIn('rate', sent.replace('accurate', ''))
+
+    def test_review_merges_without_duplicates(self):
+        lines = [_bom(self.hinge, 4), _bom(self.handle, 3)]
+        reply = _json.dumps({'findings': [
+            {'kind': 'missing', 'material': 'Screw 1 inch', 'question_en': 'Screws?'},
+        ]})
+        with _mock.patch.object(reviewer_llm, '_client', return_value=_llm_client(reply)):
+            findings = reviewer.review(lines, '3-Door Wardrobe New', use_ai=True)
+        self.assertEqual([(f.resource_id, f.source) for f in findings], [(self.screw.pk, 'stats')])
+
+
+# ── Sheet materials are Width × Length (no Breadth) ─────────────────
+
+from apps.bom.services import LineError, clean_dimension_line
+
+
+class SheetDimensionLineTests(TestCase):
+    def setUp(self):
+        self.ply = Resource.objects.create(
+            resource_name='Plywood 18mm', category='Wood and Plywood',
+            material_type='sheet', unit='sqft', rate=Decimal('90'),
+        )
+        self.teak = Resource.objects.create(
+            resource_name='Teak', category='Wood and Plywood',
+            material_type='solid_wood', unit='cft', rate=Decimal('4000'),
+        )
+
+    def test_sheet_line_needs_no_breadth(self):
+        line = clean_dimension_line(self.ply.pk, 'Top', '2', '', '4', '1',
+                                    width_unit='ft', length_unit='ft')
+        self.assertEqual(line['breadth'], 0)
+        self.assertEqual(line['length'], Decimal('4'))
+
+    def test_sheet_line_ignores_a_sent_breadth(self):
+        line = clean_dimension_line(self.ply.pk, 'Top', '2', '9', '4', '1')
+        self.assertEqual(line['breadth'], 0)
+
+    def test_solid_wood_still_needs_breadth(self):
+        with self.assertRaises(LineError):
+            clean_dimension_line(self.teak.pk, 'Leg', '2', '', '30', '4')
+
+    def test_sheet_line_needs_length(self):
+        with self.assertRaises(LineError):
+            clean_dimension_line(self.ply.pk, 'Top', '2', '', '', '1')

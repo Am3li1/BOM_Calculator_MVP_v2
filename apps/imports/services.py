@@ -30,6 +30,7 @@ from apps.imports.models import ImportLog
 # Valid dimension units — single source of truth shared by validate_wood
 # (rejects bad WU/BU/LU cells) and import_wood (trusts they're clean).
 _VALID_UNITS = {choice[0] for choice in WoodPart.UNIT_CHOICES}
+_LENGTH_UNITS = {'in', 'ft', 'cm', 'mm', 'm'}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -325,6 +326,23 @@ def validate_bom(path):
     return errors
 
 
+def _sheet_length_columns(row):
+    """
+    Sheet materials (plywood / MDF) are Width × Length. Older workbooks
+    put the second sheet measurement in the Breath column and left a
+    placeholder in Length (e.g. Length 1, LU "no"), so Length is used
+    only when it is > 0 with a real length unit (in / ft / cm / mm / m);
+    otherwise the size is read from Breath / BU.
+    Returns (value column, unit column).
+    """
+    try:
+        has_length = (float(row.get('Length')) > 0
+                      and _normalize(row.get('LU')).lower() in _LENGTH_UNITS)
+    except (TypeError, ValueError):
+        has_length = False
+    return ('Length', 'LU') if has_length else ('Breath', 'BU')
+
+
 def validate_wood(path):
     """
     Validates the Wood/Ply/MDF (Dimensions) sheet.
@@ -332,12 +350,11 @@ def validate_wood(path):
     Checks:
     - Sheet exists and required columns present
     - Product and Resource names not empty (after forward-fill)
-    - Width/Breath always numeric and non-negative; Length only checked
-      for solid_wood resources — sheet materials (Plywood/MDF/PLPB) use
-      Width x Breadth for their SFT formula and never touch Length, so a
-      blank/garbage Length or Length Unit there is not a real error.
-    - Width/Breadth Units always checked; Length Unit only checked for
-      solid_wood resources, for the same reason.
+    - Width, Breath and Length numeric and non-negative. Sheet materials
+      (Plywood/MDF/PLPB) are Width x Length only — Breath is not checked
+      for them (older workbooks that put the second sheet size in Breath
+      with a blank Length still import; see _sheet_length_columns).
+    - The matching Unit columns are checked the same way.
     - Cross-references Products and Resources from the same file
     """
     errors = []
@@ -397,7 +414,11 @@ def validate_wood(path):
         material_type = material_types.get(resource_name.lower())
         is_sheet = material_type == 'sheet'
 
-        dim_cols = ['Width', 'Breath'] if is_sheet else ['Width', 'Breath', 'Length']
+        if is_sheet:
+            length_col, length_unit_col = _sheet_length_columns(row)
+            dim_cols = ['Width', length_col]
+        else:
+            dim_cols = ['Width', 'Breath', 'Length']
         for dim_col in dim_cols:
             val = row.get(dim_col)
             try:
@@ -413,7 +434,7 @@ def validate_wood(path):
                     f'"{product_name}" / "{resource_name}": '
                     f'{dim_col} "{val}" is not a valid number.'))
 
-        unit_cols = ([('WU', 'Width'), ('BU', 'Breath')] if is_sheet
+        unit_cols = ([('WU', 'Width'), (length_unit_col, length_col)] if is_sheet
                      else [('WU', 'Width'), ('BU', 'Breath'), ('LU', 'Length')])
         for unit_col, dim_label in unit_cols:
             unit_val = _normalize(row.get(unit_col)).lower()
@@ -777,10 +798,10 @@ def import_wood(path):
     WoodPart.UNIT_CHOICES, so no defaulting/fallback logic is needed
     here (see validate_wood for the unit checks).
 
-    Length is read and stored for every row, but note it is NOT used
-    in the SFT calculation for sheet materials (Plywood/MDF/PLPB) —
-    WoodPart.calculated_quantity uses Width x Breadth for those.
-    Length only participates in the CFT formula for solid wood.
+    Sheet materials (Plywood/MDF/PLPB) are Width x Length — Breadth is
+    stored as 0 for them. An older workbook with the second sheet size in
+    Breath and a blank Length is read as Width x Breath (see
+    _sheet_length_columns).
     """
     result = {'imported': 0, 'updated': 0, 'skipped': 0, 'errors': []}
 
@@ -798,18 +819,6 @@ def import_wood(path):
         if not product_name or not resource_name:
             continue
 
-        try:
-            width   = float(row['Width'])
-            breadth = float(row['Breath'])
-            length  = float(row['Length'])
-            pieces  = int(float(row.get('Quantity', 1) or 1))
-            # Length is allowed to be 0/blank — sheet materials don't
-            # use it. Width and Breadth are required by both formulas.
-            if width <= 0 or breadth <= 0:
-                continue
-        except (ValueError, TypeError):
-            continue
-
         code     = _make_product_code(product_name)
         product  = Product.objects.filter(
             product_code=code, is_deleted=False
@@ -824,9 +833,28 @@ def import_wood(path):
 
         # WU/BU/LU are trusted here — validate_wood already rejected
         # any row with a missing/invalid unit before import ever runs.
-        width_unit   = _normalize(row.get('WU')).lower()
-        breadth_unit = _normalize(row.get('BU')).lower()
-        length_unit  = _normalize(row.get('LU')).lower()
+        width_unit = _normalize(row.get('WU')).lower()
+        try:
+            width  = float(row['Width'])
+            pieces = int(float(row.get('Quantity', 1) or 1))
+            if resource.material_type == 'sheet':
+                # Sheet materials are Width x Length — no Breadth.
+                length_col, length_unit_col = _sheet_length_columns(row)
+                length       = float(row[length_col])
+                length_unit  = _normalize(row.get(length_unit_col)).lower()
+                breadth      = 0
+                breadth_unit = length_unit
+                if not (width > 0 and length > 0):
+                    continue
+            else:
+                breadth      = float(row['Breath'])
+                length       = float(row['Length'])
+                breadth_unit = _normalize(row.get('BU')).lower()
+                length_unit  = _normalize(row.get('LU')).lower()
+                if not (width > 0 and breadth > 0):
+                    continue
+        except (ValueError, TypeError):
+            continue
 
         # Use update_or_create keyed on (product, resource, part_name).
         # If a matching WoodPart already exists, its dimensions are updated.

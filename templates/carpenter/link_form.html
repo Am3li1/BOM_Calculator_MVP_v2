@@ -33,6 +33,14 @@
     .library-item .sub { font-size: 0.78rem; color: var(--text-muted); }
     .library-item .library-detail { font-size: 0.85rem; margin-top: 8px; }
     .library-item .library-detail li { margin-bottom: 2px; }
+    .check-card { border: 2px solid var(--bs-warning, #f0ad4e); }
+    .check-item { border-top: 1px solid var(--border); padding: 10px 0; }
+    .check-item:first-of-type { border-top: 0; }
+    .check-msg { font-size: 0.95rem; }
+    .check-done { font-size: 0.85rem; color: var(--text-muted); }
+    .check-item.answered .check-actions { display: none !important; }
+    .check-item.answered .check-msg { color: var(--text-muted); }
+    .check-item.answered .check-done::before { content: "\2713  "; color: var(--bs-success, #198754); font-weight: 700; }
 </style>
 
 <!-- ══ Step 1: pick a similar product, or start new ═════════════
@@ -69,6 +77,41 @@
 
 <form method="post" id="submission-form" novalidate>
     {% csrf_token %}
+
+    {% if findings %}
+    <!-- ══ AI check: questions about the list (apps/bom/reviewer.py) ══ -->
+    <div class="link-card check-card" id="check-card">
+        <h2><i class="bi bi-lightbulb me-2 text-warning"></i>{{ labels.check_title }}</h2>
+        <p class="text-muted" style="font-size:0.9rem;">{{ labels.check_intro }}</p>
+        <input type="hidden" name="reviewed" value="1">
+        <input type="hidden" name="review_token" value="{{ review_token }}">
+        {% for f in findings %}
+        <div class="check-item{% if f.response %} answered{% endif %}" data-action="{{ f.action }}"
+             data-resource="{{ f.resource_id }}" data-suggested="{{ f.suggested }}" data-line="{{ f.line_index }}">
+            <div class="check-msg">{{ f.message }}</div>
+            <input type="hidden" class="check-response" name="finding_response_{{ f.index }}" value="{{ f.response }}">
+            <div class="check-actions d-flex flex-wrap gap-2 mt-2">
+                {% if f.action == 'add' %}
+                    <button type="button" class="btn btn-sm btn-primary" data-do="add">
+                        <i class="bi bi-plus-lg me-1"></i>{{ labels.add_it }}</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-do="dismissed">{{ labels.not_needed }}</button>
+                {% elif f.action == 'change' %}
+                    <button type="button" class="btn btn-sm btn-primary" data-do="change">{{ f.change_label }}</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-do="kept">{{ labels.keep_qty }}</button>
+                {% elif f.action == 'fix_dim' %}
+                    <button type="button" class="btn btn-sm btn-primary" data-do="fix">
+                        <i class="bi bi-pencil me-1"></i>{{ labels.fix_it }}</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-do="kept">{{ labels.keep_dim }}</button>
+                {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-do="kept">{{ labels.ack }}</button>
+                {% endif %}
+            </div>
+            <div class="check-done"></div>
+        </div>
+        {% endfor %}
+        <div class="entry-error text-danger mt-2" id="check-error"></div>
+    </div>
+    {% endif %}
 
     <div class="link-card">
         <h1 style="font-size:1.25rem; font-weight:700;">{{ labels.title }}</h1>
@@ -151,7 +194,7 @@
                         </select>
                     </div>
                 </div>
-                <div class="col-6">
+                <div class="col-6" id="dim-breadth-col">
                     <label class="form-label">{{ labels.breadth }}</label>
                     <div class="input-group">
                         <input type="number" id="dim-breadth" class="form-control" step="any" min="0" inputmode="decimal">
@@ -227,6 +270,7 @@
         enterQuantity: '{{ labels.enter_quantity|escapejs }}',
         enterPart:     '{{ labels.enter_part|escapejs }}',
         enterSizes:    '{{ labels.enter_sizes|escapejs }}',
+        enterSizesSheet: '{{ labels.enter_sizes_sheet|escapejs }}',
         enterPieces:   '{{ labels.enter_pieces|escapejs }}',
         notAdded:      '{{ labels.not_added|escapejs }}',
         enterName:     '{{ labels.enter_product_name|escapejs }}',
@@ -237,7 +281,16 @@
         newList:       '{{ labels.new_list|escapejs }}',
         confirmChange: '{{ labels.confirm_change|escapejs }}',
         materials:     '{{ labels.materials_count|escapejs }}',
-        parts:         '{{ labels.parts_count|escapejs }}'
+        parts:         '{{ labels.parts_count|escapejs }}',
+        answerAll:     '{{ labels.answer_all|escapejs }}',
+        done: {
+            added:      '{{ labels.done_added|escapejs }}',
+            add_manual: '{{ labels.done_add_manual|escapejs }}',
+            changed:    '{{ labels.done_changed|escapejs }}',
+            fixing:     '{{ labels.done_fixing|escapejs }}',
+            kept:       '{{ labels.done_kept|escapejs }}',
+            dismissed:  '{{ labels.done_dismissed|escapejs }}'
+        }
     };
     var resources = JSON.parse(document.getElementById('resource-options').textContent);
     var parts = JSON.parse(document.getElementById('part-options').textContent);
@@ -609,6 +662,7 @@
                     $('dim-' + dim + '-unit').value = d[dim];
                 });
             }
+            syncDimFields();
             dimPart.focus();
         },
         onEnter: function () { dimPart.focus(); }
@@ -624,6 +678,25 @@
         onEnter: function () { $('dim-width').focus(); }
     });
 
+    // Sheet materials (plywood / MDF) are two-dimensional: Width × Length.
+    // Breadth is hidden for them and always sent empty.
+    function isSheet(resourceId) {
+        var o = byId[String(resourceId)];
+        return !!(o && o.material_type === 'sheet');
+    }
+
+    function dimsFor(resourceId) {
+        return isSheet(resourceId) ? ['width', 'length'] : DIMS;
+    }
+
+    function syncDimFields() {
+        var opt = dimMaterial.selected();
+        var sheet = !!(opt && isSheet(opt.id));
+        $('dim-breadth-col').classList.toggle('d-none', sheet);
+        if (sheet) $('dim-breadth').value = '';
+    }
+    dimMaterial.input.addEventListener('input', syncDimFields);
+
     function readDimEntry() {
         var opt = dimMaterial.selected();
         var v = {
@@ -635,6 +708,7 @@
             v[dim] = $('dim-' + dim).value.trim();
             v[dim + '_unit'] = $('dim-' + dim + '-unit').value;
         });
+        if (isSheet(v.resource)) v.breadth = '';
         // Height is no longer asked for; the server still expects the field.
         v.height = '';
         v.height_unit = 'in';
@@ -642,9 +716,9 @@
     }
 
     function sizeText(v) {
-        var s = [v.width + ' ' + v.width_unit, v.breadth + ' ' + v.breadth_unit,
-                 v.length + ' ' + v.length_unit].join(' × ');
-        return s;
+        return dimsFor(v.resource).map(function (dim) {
+            return v[dim] + ' ' + v[dim + '_unit'];
+        }).join(' × ');
     }
 
     function appendDimRow(v) {
@@ -662,6 +736,7 @@
         tr.appendChild(td(v.pieces || '1', 'text-end'));
         tr.appendChild(actionsCell(function () {
             if (opt) dimMaterial.set(opt); else dimMaterial.clear();
+            syncDimFields();
             dimPart.setText(v.part);
             DIMS.forEach(function (dim) {
                 $('dim-' + dim).value = v[dim] || '';
@@ -693,8 +768,10 @@
             return fail(L.pickMaterial, dimMaterial.input);
         }
         if (!v.part) return fail(L.enterPart, dimPart.input);
-        var missing = ['width', 'breadth', 'length'].filter(function (dim) { return !isPositive(v[dim]); });
-        if (missing.length) return fail(L.enterSizes, $('dim-' + missing[0]));
+        var missing = dimsFor(v.resource).filter(function (dim) { return !isPositive(v[dim]); });
+        if (missing.length) {
+            return fail(isSheet(v.resource) ? L.enterSizesSheet : L.enterSizes, $('dim-' + missing[0]));
+        }
         if (!/^\d+$/.test(v.pieces) || parseInt(v.pieces, 10) < 1) return fail(L.enterPieces, dimPieces);
         showError('dim', '');
 
@@ -717,6 +794,7 @@
             $('dim-' + dim + '-unit').value = START_UNITS[dim];
         });
         dimPieces.value = '1';
+        syncDimFields();
         showError('dim', '');
     }
 
@@ -866,10 +944,84 @@
         showChooser();
     }
 
+    // ── AI check answers ─────────────────────────────────────────
+    // Each question records an answer in its hidden input; the buttons
+    // reuse the table helpers above to apply a suggestion.
+    var DONE_FOR = { added: 'added', changed: 'changed', kept: 'kept', dismissed: 'dismissed' };
+
+    // Tag the restored part rows with their position, which is what the
+    // server's dimension questions refer to (fixing one removes its row,
+    // so positions in the table shift).
+    Array.prototype.forEach.call($('dim-table').tBodies[0].rows, function (tr, i) {
+        tr.dataset.line = i;
+    });
+
+    function answer(item, response, doneKey) {
+        item.querySelector('.check-response').value = response;
+        item.querySelector('.check-done').textContent = L.done[doneKey || DONE_FOR[response]];
+        item.classList.add('answered');
+        if ($('check-error')) $('check-error').textContent = '';
+    }
+
+    function editRow(tr) {
+        var btn = tr && tr.querySelector('.row-actions .btn-outline-secondary');
+        if (btn) btn.click();
+    }
+
+    document.querySelectorAll('.check-item').forEach(function (item) {
+        var response = item.querySelector('.check-response').value;
+        if (response) answer(item, response);
+
+        item.querySelectorAll('[data-do]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var what = btn.dataset.do;
+                var res = item.dataset.resource, qty = item.dataset.suggested;
+                var tr;
+                if (what === 'add') {
+                    if (qty && byId[res]) {
+                        tr = bomRowFor(res) || appendBomRow(res, qty);
+                        flash(tr);
+                        answer(item, 'added');
+                    } else {
+                        if (byId[res]) bomMaterial.set(byId[res]);
+                        $('bom-unit-hint').textContent = byId[res] ? '(' + byId[res].unit + ')' : '';
+                        bomQty.focus();
+                        answer(item, 'added', 'add_manual');
+                    }
+                } else if (what === 'change') {
+                    tr = bomRowFor(res);
+                    if (qty && tr) {
+                        tr.querySelector('[name="bom_quantity"]').value = qty;
+                        tr.querySelector('.qty-cell').textContent = qty + (byId[res] ? ' ' + byId[res].unit : '');
+                        flash(tr);
+                        answer(item, 'changed');
+                    } else {
+                        editRow(tr);
+                        answer(item, 'changed', 'fixing');
+                    }
+                } else if (what === 'fix') {
+                    editRow($('dim-table').querySelector('tr[data-line="' + item.dataset.line + '"]'));
+                    answer(item, 'changed', 'fixing');
+                } else {
+                    answer(item, what);
+                }
+            });
+        });
+    });
+
     // Anything left in an entry box when Send is pressed gets added
     // first; if it can't be added, stop and say so rather than silently
     // dropping it.
     $('submission-form').addEventListener('submit', function (e) {
+        var unanswered = Array.prototype.filter.call(
+            document.querySelectorAll('.check-item'),
+            function (item) { return !item.querySelector('.check-response').value; });
+        if (unanswered.length) {
+            e.preventDefault();
+            $('check-error').textContent = L.answerAll;
+            unanswered[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
         if (nameInput && !nameInput.value.trim()) {
             e.preventDefault();
             $('name-error').textContent = L.enterName;

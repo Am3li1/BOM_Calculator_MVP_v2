@@ -99,6 +99,16 @@ class BOMSubmission(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     review_note = models.TextField(blank=True)
 
+    # AI BOM reviewer (apps/bom/reviewer.py). The public form may call the
+    # LLM at most MAX_AI_CHECKS times per link — the link is the only
+    # credential, so this caps what one leaked link can spend.
+    MAX_AI_CHECKS = 3
+    ai_checks_used = models.PositiveSmallIntegerField(default=0)
+    ai_reviewed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='When the AI reviewer last checked this list (empty = never checked).',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -182,3 +192,71 @@ class SubmissionLine(models.Model):
         if self.line_type == self.TYPE_BOM:
             return f'{self.resource.resource_name} × {self.quantity}'
         return f'{self.part_name} — {self.resource.resource_name}'
+
+
+class SubmissionFinding(models.Model):
+    """
+    One question the AI reviewer raised about a submission ("Did you
+    forget Hinge?", "Is 40 the right quantity?"), what the carpenter
+    answered, and — once an admin approves — whether the final BOM agreed
+    with it. These rows are the reviewer's labelled training data: the
+    feedback loop in apps/bom/reviewer.py learns from them. Never costed.
+    """
+
+    KIND_MISSING   = 'missing'
+    KIND_COMPANION = 'companion'
+    KIND_QUANTITY  = 'quantity'
+    KIND_DIMENSION = 'dimension'
+    KIND_OTHER     = 'other'
+    KIND_CHOICES = [
+        (KIND_MISSING,   'Possibly missing'),
+        (KIND_COMPANION, 'Usually used together'),
+        (KIND_QUANTITY,  'Unusual quantity'),
+        (KIND_DIMENSION, 'Unusual measurement'),
+        (KIND_OTHER,     'Other'),
+    ]
+
+    SOURCE_CHOICES = [
+        ('stats', 'Learned from BOMs'),
+        ('ai',    'AI model'),
+    ]
+
+    RESPONSE_ADDED     = 'added'
+    RESPONSE_CHANGED   = 'changed'
+    RESPONSE_KEPT      = 'kept'
+    RESPONSE_DISMISSED = 'dismissed'
+    RESPONSE_CHOICES = [
+        (RESPONSE_ADDED,     'Added it'),
+        (RESPONSE_CHANGED,   'Changed it'),
+        (RESPONSE_KEPT,      'Said it is correct'),
+        (RESPONSE_DISMISSED, 'Said not needed'),
+    ]
+
+    OUTCOME_CONFIRMED = 'confirmed'
+    OUTCOME_REJECTED  = 'rejected'
+    OUTCOME_CHOICES = [
+        (OUTCOME_CONFIRMED, 'Approved BOM agreed with the AI'),
+        (OUTCOME_REJECTED,  'Approved BOM did not follow the AI'),
+    ]
+
+    submission = models.ForeignKey(BOMSubmission, on_delete=models.CASCADE, related_name='findings')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='stats')
+    resource = models.ForeignKey(
+        'resources.Resource', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    part_name = models.CharField(max_length=200, blank=True)
+    message = models.TextField(help_text='The question, in English.')
+    evidence = models.CharField(max_length=500, blank=True)
+    suggested_value = models.CharField(max_length=50, blank=True)
+    current_value = models.CharField(max_length=100, blank=True,
+                                     help_text='What the carpenter had entered when this was raised.')
+    carpenter_response = models.CharField(max_length=20, choices=RESPONSE_CHOICES, blank=True)
+    admin_outcome = models.CharField(max_length=20, choices=OUTCOME_CHOICES, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.get_kind_display()}: {self.message[:60]}'

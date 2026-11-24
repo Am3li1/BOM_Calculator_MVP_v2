@@ -217,6 +217,10 @@ cost = calculated_quantity * resource.effective_rate  # confirmed correct, teste
 # H defaults to 1 if 0 or not provided
 ```
 
+Built-in formula by `resource.material_type` (used unless a per-line custom formula is set):
+- **solid_wood** → CFT = W(in) × B(in) × L(ft) × pcs ÷ 144
+- **sheet** (plywood / MDF) → SFT = **W(ft) × L(ft)** × pcs. Sheets are two-dimensional: **no Breadth** anywhere (admin form, carpenter link form, assistant, review page); `breadth` is stored as 0 (`clean_dimension_line` forces it). Import reads sheet rows as Width × Length, falling back to Breath/BU when Length has no real unit (old workbooks used `Length 1, LU no` as a placeholder). Migration `bom.0010` moved existing sheet Breadth → Length.
+
 ---
 
 ## Import / Export Rules
@@ -377,6 +381,25 @@ Carpenters need a way to submit BOM/dimension data from the shop floor without d
   | `BOM_ASSISTANT_MODEL` | `gemini-2.5-flash` | `llama-3.3-70b-versatile` |
 
 - Tests mock `assistant._client` and never call the API.
+
+---
+
+## AI BOM Reviewer (carpenter form + admin review)
+
+When a carpenter presses **Send**, the list is checked before it is saved. If there are questions ("Did you forget Screw?", "Is 48 correct?"), the form comes back with a **Please check** box, and nothing is stored until the second Send. The questions travel in a signed token (`django.core.signing`, salt `carpenter.bom-review`). A tampered token means the list is simply checked again. Answers are stored as `apps.carpenter.SubmissionFinding` rows.
+
+- **`apps/bom/reviewer.py`** holds the statistics, which are learned live from every active product's BOM, so each approval "retrains" it:
+  - `find_similar_products` is a nearest-neighbour search. The product's own BOM and its `based_on` get +3, plus name-word and material Jaccard.
+  - `missing_materials` flags a material used by ≥60% of the weighted references and absent from the list.
+  - `companion_rules` mines association rules (X → Y, confidence ≥0.8, support ≥3).
+  - `quantity_outliers` flags a quantity outside median ×/÷2.5, with a unit-slip hint.
+  - `dimension_outliers` flags a measurement over 12 ft, or ×/÷3 from the same part elsewhere, and pieces.
+  - Messages come in both English and Tamil (`MESSAGES`).
+- **`apps/bom/reviewer_llm.py`** is the LLM layer, using the same `BOM_ASSISTANT_*` provider settings as the voice assistant. Its payload is an explicit whitelist of names, units, quantities and measurements. **Never add rates or costs to `build_payload()`.** Every material the model names must resolve to an active `Resource`, or the finding is dropped. Any error returns `[]`, so the statistical findings stand alone.
+- **Budget:** the public link may call the LLM at most `BOMSubmission.MAX_AI_CHECKS` (3) times. The statistics always run. If the reviewer crashes, the carpenter can still send.
+- **Feedback loop:** on approval, `record_outcomes()` sets `SubmissionFinding.admin_outcome` (confirmed/rejected). A missing-material suggestion that the carpenter dismissed and the admin upheld ≥3 times on similarly named products is suppressed. Confirmed findings are sent to the LLM as worked examples.
+- **Admin:** `bom:submission_detail` shows an **AI check** card with the findings, evidence and carpenter answers, and flags the affected lines. Suggested missing materials can be ticked straight into the approval (`add_finding_<pk>` / `finding_qty_<pk>`). **Run/Re-run AI check** is `bom:submission_ai_check`, which works only on pending submissions.
+- Tests pin `BOM_ASSISTANT_API_KEY=''` (a local `.env` may hold a real key) and mock `reviewer_llm._client`.
 
 ### Known host-level quirk
 `/data/coolify/databases/` and `/data/coolify/applications/` subdirectories are sometimes created by Coolify with owner `santosh:santosh` and no traverse permission on parent dirs (`/data/coolify`, `/data/coolify/databases`, `/data/coolify/applications` are `9999:root`, mode 700). This breaks Coolify's own file-write steps (`.env` generation, Postgres init files) with `Permission denied`. Fixed via:

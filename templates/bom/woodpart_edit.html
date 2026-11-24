@@ -102,7 +102,7 @@
                             </div>
                         </div>
 
-                        <div class="col-6 col-md-6">
+                        <div class="col-6 col-md-6" id="breadth-col">
                             <div class="row g-2 dim-group">
                                 <div class="col-7">
                                     <label class="form-label fw-semibold">Breadth</label>
@@ -139,11 +139,6 @@
                                            class="form-control"
                                            value="{{ wood_part.length }}"
                                            step="0.0001" min="0" required>
-                                    <div id="length-hint" class="form-text"
-                                         style="font-size:0.75rem; display:none;">
-                                        Not used for sheet materials — SFT
-                                        is Width × Breadth.
-                                    </div>
                                 </div>
                                 <div class="col-5">
                                     <label class="form-label fw-semibold">Unit</label>
@@ -188,8 +183,8 @@
                                 <span class="text-muted me-1" style="font-size:0.8rem;">Full formula:</span>
                                 <button type="button" class="btn btn-sm btn-outline-primary formula-preset"
                                         data-material="sheet"
-                                        data-formula="width_ft * breadth_ft * pieces">
-                                    Plywood (sq ft) = W(ft) × B(ft) × Pieces
+                                        data-formula="width_ft * length_ft * pieces">
+                                    Plywood (sq ft) = W(ft) × L(ft) × Pieces
                                 </button>
                                 <button type="button" class="btn btn-sm btn-outline-primary formula-preset"
                                         data-material="solid_wood"
@@ -286,8 +281,8 @@ function highlightFormulaPreset(materialType) {
     var widthUnitSelect   = document.getElementById('width-unit-select');
     var breadthUnitSelect = document.getElementById('breadth-unit-select');
     var lengthUnitSelect  = document.getElementById('length-unit-select');
-    var lengthInput       = document.getElementById('length-input');
-    var lengthHint        = document.getElementById('length-hint');
+    var breadthCol        = document.getElementById('breadth-col');
+    var breadthInput      = breadthCol.querySelector('input[name="breadth"]');
 
     var DEFAULTS = {
         solid_wood: { width: 'in', breadth: 'in', length: 'in' },
@@ -297,15 +292,14 @@ function highlightFormulaPreset(materialType) {
     var activeIndex = -1;
     var currentMatches = [];
 
-    // Toggles the Length field's readonly/hint state for a material_type,
+    // Shows/hides Breadth for a material_type (sheet = Width × Length),
     // WITHOUT touching any values — used on initial page load, so we
     // don't clobber the already-saved dimensions just because the page
     // rendered with an existing resource selected.
     function setLengthState(materialType) {
         var isSheet = materialType === 'sheet';
-        lengthInput.readOnly = isSheet;
-        lengthInput.classList.toggle('bg-body-secondary', isSheet);
-        lengthHint.style.display = isSheet ? 'block' : 'none';
+        breadthCol.style.display = isSheet ? 'none' : '';
+        breadthInput.required = !isSheet;
         highlightFormulaPreset(materialType);
     }
 
@@ -323,7 +317,7 @@ function highlightFormulaPreset(materialType) {
 
         setLengthState(materialType);
         if (materialType === 'sheet') {
-            lengthInput.value = '1';
+            breadthInput.value = '';
         }
     }
 
@@ -450,7 +444,7 @@ function highlightFormulaPreset(materialType) {
     });
 
     // Initial state on page load: reflect the currently-saved resource's
-    // material_type for the Length readonly/hint behaviour, but leave
+    // material_type for the Breadth show/hide behaviour, but leave
     // the saved width_unit/breadth_unit/length_unit/length values
     // exactly as they were — only an active re-selection should override them.
     if (hiddenInput.value) {

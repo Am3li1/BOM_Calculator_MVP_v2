@@ -5,7 +5,7 @@
 
 from django.contrib import admin
 
-from .models import BOMSubmission, SubmissionLine
+from .models import BOMSubmission, SubmissionFinding, SubmissionLine
 
 
 class SubmissionLineInline(admin.TabularInline):
@@ -20,13 +20,25 @@ class SubmissionLineInline(admin.TabularInline):
         return False
 
 
+class SubmissionFindingInline(admin.TabularInline):
+    model = SubmissionFinding
+    extra = 0
+    can_delete = False
+    fields = ['kind', 'source', 'resource', 'part_name', 'message', 'evidence',
+              'carpenter_response', 'admin_outcome']
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(BOMSubmission)
 class BOMSubmissionAdmin(admin.ModelAdmin):
     list_display = ['product_label', 'carpenter_name', 'status', 'created_at', 'submitted_at', 'reviewed_by']
     list_filter = ['status']
     search_fields = ['product__product_code', 'product__product_name', 'new_product_name', 'carpenter_name']
     exclude = ['token']
-    inlines = [SubmissionLineInline]
+    inlines = [SubmissionLineInline, SubmissionFindingInline]
 
     def has_add_permission(self, request):
         return False

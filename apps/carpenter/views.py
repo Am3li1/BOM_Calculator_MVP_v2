@@ -11,20 +11,28 @@
 # form only stages data (BOMSubmission / SubmissionLine); an admin must
 # approve before anything reaches the real BOM.
 
+import logging
+
 from django.contrib.auth.decorators import login_required
+from django.core import signing
 from django.db import transaction
+from django.db.models import F
 from django.http import Http404
 from django.shortcuts import render, redirect
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 
+from apps.bom import reviewer, reviewer_llm
 from apps.bom.models import BOMItem, Part, WoodPart
+from apps.bom.reviewer import Finding
 from apps.bom.services import LineError, clean_bom_line, clean_dimension_line
 from apps.core.decorators import carpenter_required
 from apps.products.models import Product
 from apps.resources.models import Resource, DIMENSIONAL_UNIT_CHOICES
 
-from .models import BOMSubmission, SubmissionLine
+from .models import BOMSubmission, SubmissionFinding, SubmissionLine
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -57,12 +65,13 @@ LABELS = {
         'add': 'Add',
         'remove': 'Remove',
         'edit': 'Edit',
-        'size': 'Size (W × B × L)',
+        'size': 'Size',
         'nothing_yet': 'Nothing added yet.',
         'pick_material': 'Pick a material from the list.',
         'enter_quantity': 'Enter a quantity greater than 0.',
         'enter_part': 'Enter the part name.',
         'enter_sizes': 'Enter width, breadth and length.',
+        'enter_sizes_sheet': 'Enter width and length.',
         'enter_pieces': 'Pieces must be a whole number, 1 or more.',
         'not_added': 'You have typed something that is not added yet — press Add or clear it.',
         'part_search': 'e.g. Table top, Leg, Shelf…',
@@ -100,6 +109,24 @@ LABELS = {
         'confirm_change': 'Go back? The list you have made below will be cleared.',
         'materials_count': 'materials',
         'parts_count': 'parts',
+        'check_title': 'Please check before sending',
+        'check_intro': 'We compared your list with similar products. Answer each question, '
+                       'then press Send.',
+        'add_it': 'Add it',
+        'not_needed': 'Not needed',
+        'change_to': 'Change to {value}',
+        'fix_qty': 'Change it',
+        'keep_qty': 'My quantity is correct',
+        'fix_it': 'Fix it',
+        'keep_dim': 'Measurement is correct',
+        'ack': 'OK, checked',
+        'done_added': 'Added to the list',
+        'done_add_manual': 'Enter the quantity above and press Add',
+        'done_changed': 'Changed',
+        'done_fixing': 'Fix it above, then press Add',
+        'done_kept': 'Kept as it is',
+        'done_dismissed': 'Not needed',
+        'answer_all': 'Please answer each question in the box above before sending.',
     },
     'ta': {
         'title': 'தேவையான பொருட்கள்',
@@ -120,12 +147,13 @@ LABELS = {
         'add': 'சேர்',
         'remove': 'நீக்கு',
         'edit': 'திருத்து',
-        'size': 'அளவு (W × B × L)',
+        'size': 'அளவு',
         'nothing_yet': 'இன்னும் எதுவும் சேர்க்கப்படவில்லை.',
         'pick_material': 'பட்டியலிலிருந்து ஒரு பொருளைத் தேர்ந்தெடுக்கவும்.',
         'enter_quantity': '0-ஐ விட அதிகமான அளவை உள்ளிடவும்.',
         'enter_part': 'பாகத்தின் பெயரை உள்ளிடவும்.',
         'enter_sizes': 'அகலம், கனம், நீளம் ஆகியவற்றை உள்ளிடவும்.',
+        'enter_sizes_sheet': 'அகலம், நீளம் ஆகியவற்றை உள்ளிடவும்.',
         'enter_pieces': 'எண்ணிக்கை 1 அல்லது அதற்கு மேற்பட்ட முழு எண்ணாக இருக்க வேண்டும்.',
         'not_added': 'நீங்கள் தட்டச்சு செய்தது இன்னும் சேர்க்கப்படவில்லை — சேர் அழுத்தவும் அல்லது அழிக்கவும்.',
         'part_search': 'எ.கா. மேசை மேல், கால், அலமாரி…',
@@ -163,6 +191,24 @@ LABELS = {
         'confirm_change': 'பின் செல்லவா? கீழே நீங்கள் செய்த பட்டியல் அழிக்கப்படும்.',
         'materials_count': 'பொருட்கள்',
         'parts_count': 'பாகங்கள்',
+        'check_title': 'அனுப்பும் முன் சரிபார்க்கவும்',
+        'check_intro': 'உங்கள் பட்டியலை ஒத்த பொருட்களுடன் ஒப்பிட்டோம். ஒவ்வொரு கேள்விக்கும் '
+                       'பதில் அளித்து, பிறகு அனுப்பு அழுத்தவும்.',
+        'add_it': 'சேர்',
+        'not_needed': 'தேவையில்லை',
+        'change_to': '{value} ஆக மாற்று',
+        'fix_qty': 'மாற்று',
+        'keep_qty': 'என் அளவு சரி',
+        'fix_it': 'திருத்து',
+        'keep_dim': 'அளவு சரி',
+        'ack': 'சரி, பார்த்தேன்',
+        'done_added': 'பட்டியலில் சேர்க்கப்பட்டது',
+        'done_add_manual': 'மேலே அளவை உள்ளிட்டு சேர் அழுத்தவும்',
+        'done_changed': 'மாற்றப்பட்டது',
+        'done_fixing': 'மேலே திருத்தி, சேர் அழுத்தவும்',
+        'done_kept': 'அப்படியே வைக்கப்பட்டது',
+        'done_dismissed': 'தேவையில்லை',
+        'answer_all': 'அனுப்பும் முன் மேலே உள்ள ஒவ்வொரு கேள்விக்கும் பதில் அளிக்கவும்.',
     },
 }
 
@@ -297,6 +343,96 @@ def _parse_submission(post, labels):
     return lines, bom_rows, dim_rows, errors
 
 
+# ── AI check before sending ─────────────────────────────────────────
+#
+# The first Send runs apps.bom.reviewer. If it has questions, the form
+# comes back with a "Please check" box and nothing is saved. The
+# questions travel in a signed token, so the second Send (reviewed=1)
+# stores exactly what was asked, plus the carpenter's answers.
+
+_REVIEW_SALT = 'carpenter.bom-review'
+_REVIEW_MAX_AGE = 2 * 24 * 3600
+_RESPONSES = {r for r, _ in SubmissionFinding.RESPONSE_CHOICES}
+
+
+def _sign_review(submission, findings):
+    return signing.dumps({'s': submission.pk, 'f': [f.to_dict() for f in findings]},
+                         salt=_REVIEW_SALT, compress=True)
+
+
+def _load_review(value, submission):
+    """Findings from a signed token, or None if missing / tampered /
+    stale / for another link."""
+    try:
+        data = signing.loads(value or '', salt=_REVIEW_SALT, max_age=_REVIEW_MAX_AGE)
+    except signing.BadSignature:
+        return None
+    if not isinstance(data, dict) or data.get('s') != submission.pk:
+        return None
+    return [Finding.from_dict(f) for f in data.get('f', [])]
+
+
+def _run_review(submission, lines, product_name, based_on):
+    """Runs the reviewer. The LLM is used only while this link has AI
+    checks left (the link is public — this caps spend per link)."""
+    use_ai = reviewer_llm.is_configured() and submission.ai_checks_used < BOMSubmission.MAX_AI_CHECKS
+    if use_ai:
+        BOMSubmission.objects.filter(pk=submission.pk).update(ai_checks_used=F('ai_checks_used') + 1)
+    try:
+        return reviewer.review(lines, product_name, product=submission.product,
+                               based_on=based_on, use_ai=use_ai)
+    except Exception:
+        # The check is a helper — it must never stop a carpenter sending.
+        logger.exception('AI BOM reviewer failed; sending without a check')
+        return []
+
+
+def _finding_row(submission, finding, response):
+    resource_id = finding.resource_id
+    if resource_id and not Resource.objects.filter(pk=resource_id).exists():
+        resource_id = None
+    return SubmissionFinding(
+        submission=submission,
+        kind=finding.kind if finding.kind in dict(SubmissionFinding.KIND_CHOICES) else 'other',
+        source=finding.source if finding.source in ('stats', 'ai') else 'stats',
+        resource_id=resource_id,
+        part_name=finding.part_name[:200],
+        message=finding.message_en,
+        evidence=finding.evidence[:500],
+        suggested_value=finding.suggested[:50],
+        current_value=finding.current[:100],
+        carpenter_response=response if response in _RESPONSES else '',
+    )
+
+
+def _finding_cards(findings, post, labels, lang):
+    """Findings → what the "Please check" box shows: the question in the
+    link's language, which buttons to offer, and any answer already given."""
+    cards = []
+    for i, f in enumerate(findings):
+        if f.kind in ('missing', 'companion') and f.resource_id:
+            action = 'add'
+        elif f.kind == 'quantity' and f.resource_id:
+            action = 'change'
+        elif f.kind == 'dimension' and f.line_index is not None:
+            action = 'fix_dim'
+        else:
+            action = 'ack'
+        response = post.get(f'finding_response_{i}', '') if post is not None else ''
+        cards.append({
+            'index': i,
+            'message': f.message_ta if lang == 'ta' else f.message_en,
+            'action': action,
+            'resource_id': f.resource_id or '',
+            'suggested': f.suggested,
+            'line_index': '' if f.line_index is None else f.line_index,
+            'change_label': labels['change_to'].format(value=f.suggested) if f.suggested
+                            else labels['fix_qty'],
+            'response': response if response in _RESPONSES else '',
+        })
+    return cards
+
+
 @never_cache
 def link_form(request, token):
     submission = (
@@ -329,6 +465,7 @@ def link_form(request, token):
 
     errors, bom_rows, dim_rows, note = [], [], [], ''
     new_product_name, based_on = '', None
+    findings, review_token = None, ''
 
     if request.method == 'POST':
         note = request.POST.get('note', '').strip()[:2000]
@@ -342,7 +479,23 @@ def link_form(request, token):
             if not new_product_name:
                 errors.insert(0, labels['enter_product_name'])
 
-        if not errors:
+        # Questions already asked (second Send). A missing or tampered
+        # token just means the list is checked again.
+        if request.POST.get('reviewed') == '1':
+            findings = _load_review(request.POST.get('review_token'), submission)
+            if findings is not None:
+                review_token = request.POST.get('review_token')
+
+        ask_first = False
+        if not errors and findings is None:
+            product_name = product.product_name if product else \
+                (new_product_name or (based_on.product_name if based_on else ''))
+            findings = _run_review(submission, lines, product_name, based_on)
+            if findings:
+                review_token = _sign_review(submission, findings)
+                ask_first = True    # show the questions; save on the next Send
+
+        if not errors and not ask_first:
             with transaction.atomic():
                 # Re-check under a row lock so a double-tap on Send can't
                 # create two sets of lines for one link.
@@ -369,13 +522,18 @@ def link_form(request, token):
                     )
                     for line in lines
                 ])
+                SubmissionFinding.objects.bulk_create([
+                    _finding_row(locked, f, request.POST.get(f'finding_response_{i}', ''))
+                    for i, f in enumerate(findings or [])
+                ])
                 locked.note = note
                 locked.new_product_name = new_product_name
                 locked.based_on = based_on
                 locked.status = BOMSubmission.STATUS_PENDING
                 locked.submitted_at = timezone.now()
+                locked.ai_reviewed_at = timezone.now() if findings is not None else None
                 locked.save(update_fields=['note', 'new_product_name', 'based_on',
-                                           'status', 'submitted_at'])
+                                           'status', 'submitted_at', 'ai_reviewed_at'])
 
             request.session['carpenter_submitted'] = submission.pk
             return redirect('carpenter:link_form', token=token)
@@ -397,4 +555,7 @@ def link_form(request, token):
             'based_on_name': based_on.product_name if based_on else '',
         },
         'new_product_name': new_product_name,
+        'findings': _finding_cards(findings or [], request.POST if request.method == 'POST' else None,
+                                   labels, submission.language),
+        'review_token': review_token,
     })

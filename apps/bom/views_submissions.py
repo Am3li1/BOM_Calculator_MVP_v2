@@ -19,12 +19,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from apps.carpenter.models import BOMSubmission, SubmissionLine
+from apps.carpenter.models import BOMSubmission, SubmissionFinding, SubmissionLine
 from apps.core.decorators import admin_required, not_carpenter
 from apps.products.models import Product
 from apps.products.views import _generate_unique_product_code
 from apps.resources.models import DIMENSIONAL_UNIT_CHOICES
 
+from . import reviewer, reviewer_llm
 from .models import BOMItem, WoodPart
 from .services import (
     LineError, apply_lines, clean_bom_line, clean_dimension_line, describe_result,
@@ -157,9 +158,23 @@ def _render_detail(request, submission, posted=None, errors=None):
             WoodPart.objects.filter(product=product).values_list('resource_id', 'part_name')
         )
 
+    findings = list(submission.findings.select_related('resource'))
+    dim_index = {}
+    for line in lines:
+        if line.line_type == SubmissionLine.TYPE_DIMENSION:
+            dim_index[line.pk] = len(dim_index)
+
     rows = []
     for line in lines:
         row = {'line': line}
+        if line.line_type == SubmissionLine.TYPE_BOM:
+            row['flagged'] = any(f.kind == SubmissionFinding.KIND_QUANTITY and f.resource_id == line.resource_id
+                                 for f in findings)
+        else:
+            row['flagged'] = any(f.kind == SubmissionFinding.KIND_DIMENSION
+                                 and f.resource_id == line.resource_id
+                                 and f.part_name.lower() == line.part_name.lower()
+                                 for f in findings)
         if line.line_type == SubmissionLine.TYPE_BOM:
             row['current_qty'] = current_qty.get(line.resource_id)
         else:
@@ -195,6 +210,12 @@ def _render_detail(request, submission, posted=None, errors=None):
         'dim_rows': [r for r in rows if r['line'].line_type == SubmissionLine.TYPE_DIMENSION],
         'unit_choices': DIMENSIONAL_UNIT_CHOICES,
         'errors': errors or [],
+        'findings': findings,
+        'missing_findings': [f for f in findings if f.kind in (SubmissionFinding.KIND_MISSING,
+                                                                SubmissionFinding.KIND_COMPANION)],
+        'added_findings': {f.pk for f in findings
+                           if posted is not None and posted.get(f'add_finding_{f.pk}') == 'on'},
+        'ai_configured': reviewer_llm.is_configured(),
     }
     if submission.status == BOMSubmission.STATUS_OPEN:
         link = _link_url(request, submission)
@@ -262,6 +283,20 @@ def submission_approve(request, pk):
         except LineError as e:
             errors.append(f'{label}: {e}')
 
+    # Materials the AI check said were missing, ticked by the admin.
+    in_lines = {line['resource'].pk for line in cleaned if line['type'] == 'bom'}
+    for finding in submission.findings.filter(
+        kind__in=[SubmissionFinding.KIND_MISSING, SubmissionFinding.KIND_COMPANION],
+        resource__isnull=False,
+    ).select_related('resource'):
+        if post.get(f'add_finding_{finding.pk}') != 'on' or finding.resource_id in in_lines:
+            continue
+        try:
+            cleaned.append(clean_bom_line(finding.resource_id, post.get(f'finding_qty_{finding.pk}')))
+            in_lines.add(finding.resource_id)
+        except LineError as e:
+            errors.append(f'{finding.resource.resource_name}: {e}')
+
     if not cleaned and not errors:
         errors.append('Tick at least one line to approve, or reject the submission instead.')
     if errors:
@@ -286,6 +321,7 @@ def submission_approve(request, pk):
             locked.product = product
             locked.new_product_name = new_product_name
         result = apply_lines(product, cleaned)
+        reviewer.record_outcomes(locked, cleaned)     # feedback-loop labels
         locked.status = BOMSubmission.STATUS_APPROVED
         locked.reviewed_by = request.user
         locked.reviewed_at = timezone.now()
@@ -333,4 +369,46 @@ def submission_revoke(request, pk):
         submission.save(update_fields=['status'])
 
     messages.success(request, 'Link revoked — it can no longer be used.')
+    return redirect('bom:submission_detail', pk=pk)
+
+
+@login_required
+@not_carpenter
+@admin_required
+@require_POST
+def submission_ai_check(request, pk):
+    """Runs the AI reviewer again on a pending submission (e.g. one sent
+    before the reviewer existed). Replaces earlier findings; the
+    carpenter's answers to those are lost, so only offered while pending."""
+    submission = get_object_or_404(
+        BOMSubmission.objects.select_related('product', 'based_on'), pk=pk,
+    )
+    if submission.status != BOMSubmission.STATUS_PENDING:
+        messages.error(request, 'Only submissions waiting for review can be checked.')
+        return redirect('bom:submission_detail', pk=pk)
+
+    findings = reviewer.review(
+        reviewer.lines_from_submission(submission),
+        reviewer.submission_product_name(submission),
+        product=submission.product, based_on=submission.based_on,
+        use_ai=reviewer_llm.is_configured(),
+    )
+    with transaction.atomic():
+        submission.findings.all().delete()
+        SubmissionFinding.objects.bulk_create([
+            SubmissionFinding(
+                submission=submission, kind=f.kind if f.kind in dict(SubmissionFinding.KIND_CHOICES) else 'other',
+                source=f.source, resource_id=f.resource_id, part_name=f.part_name[:200],
+                message=f.message_en, evidence=f.evidence[:500],
+                suggested_value=f.suggested[:50], current_value=f.current[:100],
+            )
+            for f in findings
+        ])
+        submission.ai_reviewed_at = timezone.now()
+        submission.save(update_fields=['ai_reviewed_at'])
+
+    if findings:
+        messages.success(request, f'AI check raised {len(findings)} question{"s" if len(findings) != 1 else ""}.')
+    else:
+        messages.success(request, 'AI check found nothing to question.')
     return redirect('bom:submission_detail', pk=pk)
